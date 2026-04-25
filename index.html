@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Station Analytics Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { background: #0b1120; color: #f1f5f9; font-family: 'Inter', sans-serif; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
+        .tab-active { color: #3b82f6; border-bottom: 3px solid #3b82f6; font-weight: 900; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .station-card { transition: all 0.2s ease-in-out; }
+        .station-card:hover { transform: translateY(-4px); }
+        select option { background: #1e293b; color: white; }
+        .clickable-row:hover { background: rgba(59, 130, 246, 0.1); cursor: pointer; }
+
+        #popover-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 100; opacity: 0; transition: opacity 0.2s ease; }
+        #error-popover { transform: scale(0.9); transition: transform 0.2s ease; }
+        #popover-overlay.active { display: flex; opacity: 1; }
+        #popover-overlay.active #error-popover { transform: scale(1); }
+        .stat-btn { transition: all 0.15s ease; cursor: pointer; }
+        .stat-btn:hover { filter: brightness(1.2); transform: scale(1.05); }
+        .stat-btn:active { transform: scale(0.97); }
+        .mini-chart { width: 100%; height: 80px; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <!-- Error Popover -->
+    <div id="popover-overlay" onclick="hideErrorPopover()">
+        <div id="error-popover" onclick="event.stopPropagation()" class="glass max-w-md w-full p-8 rounded-3xl border-t-2 border-red-500 shadow-2xl shadow-red-500/20">
+            <p class="text-[10px] text-red-500 font-black uppercase tracking-[0.2em] mb-3">Failure Reason Detail</p>
+            <div id="popover-content" class="text-sm font-bold leading-relaxed text-white break-words"></div>
+            <p class="mt-6 text-[9px] text-slate-500 uppercase font-black text-center tracking-widest italic">Click anywhere outside to close</p>
+        </div>
+    </div>
+
+    <!-- Carrier Fail Modal -->
+    <div id="fail-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div class="glass w-full max-w-3xl max-h-[80vh] rounded-3xl overflow-hidden flex flex-col">
+            <div class="p-6 border-b border-white/10 flex justify-between items-center bg-red-500/10">
+                <div>
+                    <h2 id="modal-carrier-id" class="text-xl font-black text-white italic">Carrier Details</h2>
+                    <p class="text-[10px] text-red-400 font-black uppercase tracking-widest mt-1">Sequence Failure Log & Tester Info</p>
+                </div>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-white text-2xl font-black">&times;</button>
+            </div>
+            <div class="p-6 overflow-auto">
+                <table class="w-full text-left text-xs font-mono">
+                    <thead class="text-[10px] text-slate-500 uppercase font-black tracking-widest border-b border-white/5">
+                        <tr>
+                            <th class="pb-3">Station</th>
+                            <th class="pb-3">Tester ID</th>
+                            <th class="pb-3">Seq</th>
+                            <th class="pb-3">Title / Error</th>
+                            <th class="pb-3 text-right">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modal-table-body" class="text-slate-300"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Station Overview Modal — split layout: KPI+Chart LEFT / Table RIGHT -->
+    <div id="station-overview-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm">
+        <div class="glass w-full max-w-7xl rounded-3xl overflow-hidden flex flex-col" style="border-top:3px solid #3b82f6; height:92vh;">
+
+            <!-- Header -->
+            <div class="flex-none px-6 py-4 border-b border-white/10 flex justify-between items-center bg-blue-500/5">
+                <div class="flex items-center gap-4">
+                    <div>
+                        <p class="text-[9px] font-black text-blue-400 uppercase tracking-widest">Station Overview</p>
+                        <h2 id="sov-title" class="text-xl font-black text-white italic uppercase leading-tight">—</h2>
+                    </div>
+                    <div id="sov-yield-badge" class="px-3 py-1 rounded-xl text-xs font-black uppercase"></div>
+                </div>
+                <button onclick="closeStationOverviewModal()" class="text-slate-400 hover:text-white text-2xl font-black w-9 h-9 flex items-center justify-center rounded-xl hover:bg-white/10 transition-all">&times;</button>
+            </div>
+
+            <!-- Two-panel body -->
+            <div class="flex flex-1 min-h-0">
+
+                <!-- LEFT panel: KPI cards + big chart -->
+                <div class="flex-none w-80 border-r border-white/10 flex flex-col bg-slate-900/30">
+
+                    <!-- KPI -->
+                    <div class="flex-none p-4 space-y-2 border-b border-white/10">
+                        <div class="bg-slate-800/60 rounded-2xl px-4 py-3 flex justify-between items-center">
+                            <div>
+                                <p class="text-[9px] text-slate-500 font-black uppercase tracking-widest">Total Input</p>
+                                <p id="sov-total" class="text-3xl font-black text-white font-mono leading-tight">0</p>
+                            </div>
+                        </div>
+                        <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl px-4 py-3 flex justify-between items-center">
+                            <div>
+                                <p class="text-[9px] text-emerald-500 font-black uppercase tracking-widest">Pass</p>
+                                <p id="sov-pass" class="text-3xl font-black text-emerald-400 font-mono leading-tight">0</p>
+                            </div>
+                            <span class="text-emerald-500/40 font-black text-3xl">✓</span>
+                        </div>
+                        <div class="bg-red-500/10 border border-red-500/20 rounded-2xl px-4 py-3 flex justify-between items-center">
+                            <div>
+                                <p class="text-[9px] text-red-500 font-black uppercase tracking-widest">Fail</p>
+                                <p id="sov-fail" class="text-3xl font-black text-red-400 font-mono leading-tight">0</p>
+                            </div>
+                            <span class="text-red-500/40 font-black text-3xl">✕</span>
+                        </div>
+                    </div>
+
+                    <!-- Chart stretches to fill -->
+                    <div class="flex-1 min-h-0 p-3 flex flex-col">
+                        <p class="text-[8px] text-slate-500 font-black uppercase tracking-widest mb-1">Pass / Fail by Date</p>
+                        <div id="sov-chart" class="flex-1 min-h-0"></div>
+                    </div>
+                </div>
+
+                <!-- RIGHT panel: tab/search bar + full-height scrollable table -->
+                <div class="flex-1 flex flex-col min-w-0">
+
+                    <!-- Toolbar -->
+                    <div class="flex-none flex items-center gap-2 px-4 py-2 border-b border-white/10 bg-slate-900/20 flex-wrap">
+                        <div class="flex bg-slate-900 rounded-xl p-1 border border-white/10 gap-1">
+                            <button onclick="sovSwitchTab('all')"  id="sov-tab-all"  class="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all bg-blue-500 text-white">All</button>
+                            <button onclick="sovSwitchTab('pass')" id="sov-tab-pass" class="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">Pass</button>
+                            <button onclick="sovSwitchTab('fail')" id="sov-tab-fail" class="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">Fail</button>
+                        </div>
+                        <input type="text" id="sov-search" oninput="sovFilterTable()" placeholder="Search carrier / tester / title..." class="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-black outline-none focus:border-blue-500 transition-all">
+                        <span id="sov-count" class="flex-none text-[9px] text-slate-500 font-black uppercase tracking-widest whitespace-nowrap"></span>
+                    </div>
+
+                    <!-- Scrollable table — takes ALL remaining height -->
+                    <div class="flex-1 overflow-auto">
+                        <table class="w-full text-left text-xs font-mono">
+                            <thead class="sticky top-0 z-10 bg-slate-800 text-[10px] text-slate-500 uppercase font-black tracking-widest">
+                                <tr>
+                                    <th class="px-4 py-3 w-20">Result</th>
+                                    <th class="px-4 py-3">Carrier ID</th>
+                                    <th class="px-4 py-3">Tester ID</th>
+                                    <th class="px-4 py-3 w-16">Seq</th>
+                                    <th class="px-4 py-3">Title / Error</th>
+                                    <th class="px-4 py-3 text-right whitespace-nowrap">Timestamp</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sov-table-body" class="text-slate-300"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Station Detail Modal (Pass/Fail button inside card) -->
+    <div id="station-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div class="glass w-full max-w-4xl max-h-[85vh] rounded-3xl overflow-hidden flex flex-col">
+            <div id="station-modal-header" class="p-6 border-b border-white/10 flex justify-between items-center">
+                <div>
+                    <h2 id="station-modal-title" class="text-xl font-black text-white italic">Station Detail</h2>
+                    <p id="station-modal-subtitle" class="text-[10px] font-black uppercase tracking-widest mt-1">Detail Log</p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div id="station-modal-badge" class="px-3 py-1 rounded-full text-xs font-black uppercase"></div>
+                    <button onclick="closeStationModal()" class="text-slate-400 hover:text-white text-2xl font-black">&times;</button>
+                </div>
+            </div>
+            <div class="p-4 border-b border-white/5 bg-slate-900/40 flex gap-4 items-center">
+                <input type="text" id="station-modal-search" oninput="filterStationModalTable()" placeholder="Search carrier / tester / title..." class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-xs font-black outline-none w-64 focus:border-blue-500 transition-all">
+                <span id="station-modal-count" class="text-[10px] text-slate-500 font-black uppercase tracking-widest"></span>
+            </div>
+            <div class="overflow-auto flex-1">
+                <table class="w-full text-left text-xs font-mono">
+                    <thead class="sticky top-0 bg-slate-800 text-[10px] text-slate-500 uppercase font-black tracking-widest">
+                        <tr>
+                            <th class="p-4">Carrier ID</th>
+                            <th class="p-4">Tester ID</th>
+                            <th class="p-4">Seq</th>
+                            <th class="p-4">Title / Error</th>
+                            <th class="p-4 text-right">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="station-modal-body" class="text-slate-300"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-center gap-6 mb-8 glass p-6 rounded-3xl border-t border-white/5">
+            <div>
+                <h1 class="text-3xl font-black text-white uppercase italic tracking-tighter">Station<span class="text-blue-500">Live</span></h1>
+                <p class="text-slate-400 text-[10px] uppercase tracking-widest font-bold">Performance Tracking System</p>
+            </div>
+            <div id="drop-zone" class="w-full md:w-80 h-16 border-2 border-dashed border-slate-700 rounded-2xl flex items-center justify-center hover:border-blue-500 hover:bg-blue-500/5 cursor-pointer transition-all">
+                <span id="drop-text" class="text-slate-400 text-sm font-bold uppercase tracking-widest">Drop Log File Here</span>
+                <input type="file" id="file-input" class="hidden" accept=".csv,.txt">
+            </div>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
+            <div class="glass p-4 rounded-2xl border-t border-white/10 md:col-span-2 flex gap-4">
+                <div class="w-1/2">
+                    <label class="text-[9px] uppercase font-black text-blue-400 mb-1 block tracking-widest">Type</label>
+                    <select id="time-type" onchange="updateTimeOptions(); updateUI();" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs font-black outline-none cursor-pointer">
+                        <option value="ALL">All Time</option>
+                        <option value="DATE">Date</option>
+                        <option value="WEEK">Week</option>
+                        <option value="MONTH">Month</option>
+                    </select>
+                </div>
+                <div id="time-val-container" class="w-1/2 hidden">
+                    <label class="text-[9px] uppercase font-black text-blue-400 mb-1 block tracking-widest">Select</label>
+                    <select id="time-value" onchange="updateUI()" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-xs font-black outline-none cursor-pointer"></select>
+                </div>
+            </div>
+            <div class="glass p-4 rounded-2xl border-t border-white/10 flex flex-col justify-center">
+                <p class="text-[9px] text-slate-500 uppercase font-black tracking-widest">Grand Total</p>
+                <p id="total-count-text" class="text-xl font-black text-white font-mono">0</p>
+            </div>
+            <div class="glass p-4 rounded-2xl border-t border-emerald-500/50 flex flex-col justify-center bg-emerald-500/5">
+                <p class="text-[9px] text-emerald-500 uppercase font-black tracking-widest">Total Pass</p>
+                <p id="total-pass-text" class="text-xl font-black text-emerald-400 font-mono">0</p>
+            </div>
+            <div class="glass p-4 rounded-2xl border-t border-red-500/50 flex flex-col justify-center bg-red-500/5">
+                <p class="text-[9px] text-red-500 uppercase font-black tracking-widest">Total Fail</p>
+                <p id="total-fail-text" class="text-xl font-black text-red-400 font-mono">0</p>
+            </div>
+            <div class="glass p-4 rounded-2xl border-t border-blue-500/50 flex flex-col justify-center">
+                <p class="text-[9px] text-blue-500 uppercase font-black tracking-widest">Yield</p>
+                <p id="display-yield" class="text-xl font-black text-blue-400 font-mono">0%</p>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex gap-8 border-b border-white/5 mb-6 px-2 font-black uppercase tracking-widest">
+            <button onclick="switchTab('overview')" id="tab-overview" class="pb-3 text-sm tab-active tracking-[0.2em]">Overview</button>
+            <button onclick="switchTab('carrier')" id="tab-carrier" class="pb-3 text-sm text-slate-400 tracking-[0.2em]">Carriers</button>
+        </div>
+
+        <!-- Overview Tab -->
+        <div id="view-overview" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="space-y-6">
+                    <div class="glass p-6 rounded-2xl space-y-4">
+                        <div>
+                            <label class="text-[10px] uppercase font-black text-blue-400 mb-2 block tracking-widest">Line Selection</label>
+                            <select id="line-filter" onchange="updateStationOptions(); updateUI();" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm font-black outline-none">
+                                <option value="ALL">All Lines</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] uppercase font-black text-blue-400 mb-2 block tracking-widest">Station Filter</label>
+                            <select id="station-filter" onchange="updateUI()" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm font-black outline-none">
+                                <option value="ALL">All Stations</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="glass p-6 rounded-2xl border-t border-red-500/30">
+                        <h3 class="text-[10px] uppercase font-black text-red-500 mb-4 tracking-widest">Top 5 Fail Reasons (Pareto)</h3>
+                        <div id="pareto-list" class="space-y-3">
+                            <p class="text-[10px] text-slate-500 italic">Drop file to analyze</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="glass p-4 rounded-2xl lg:col-span-2 relative min-h-[300px]">
+                    <div id="pie-chart" style="width: 100%; height: 300px;"></div>
+                </div>
+            </div>
+            <div id="station-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-10"></div>
+        </div>
+
+        <!-- Carrier Tab -->
+        <div id="view-carrier" class="hidden glass rounded-2xl overflow-hidden">
+            <div class="p-4 bg-blue-500/10 border-b border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div class="flex items-center gap-3">
+                    <span class="text-blue-400 font-black text-[10px] uppercase tracking-widest">Sort:</span>
+                    <div class="flex bg-slate-900 p-1 rounded-xl border border-white/10">
+                        <button onclick="setSortMode('fail')" id="btn-sort-fail" class="px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all bg-red-500 text-white shadow-lg shadow-red-500/20">Fail</button>
+                        <button onclick="setSortMode('pass')" id="btn-sort-pass" class="px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">Pass</button>
+                    </div>
+                </div>
+                <input type="text" id="carrier-search" oninput="updateUI()" placeholder="SEARCH CARRIER ID..." class="bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs font-black outline-none w-full md:w-64 focus:border-blue-500 transition-all">
+            </div>
+            <div class="max-h-[600px] overflow-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="sticky top-0 bg-slate-800 text-[10px] text-slate-500 uppercase font-black tracking-widest">
+                        <tr>
+                            <th class="p-4">Carrier ID</th>
+                            <th class="p-4 text-right font-black">Total</th>
+                            <th class="p-4 text-right text-emerald-500 font-black">Pass</th>
+                            <th class="p-4 text-right text-red-500 font-black">Fail</th>
+                            <th class="p-4 text-right font-black">Yield</th>
+                        </tr>
+                    </thead>
+                    <tbody id="carrier-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let rawData = [];
+        let timeData = { dates: new Set(), weeks: new Set(), months: new Set() };
+        let carrierFailDetails = {};
+        let stationRowCache = {};
+        let currentStationModalRows = [];
+        let currentSortMode = 'fail';
+        let miniChartInstances = {}; // Store mini chart instances
+        let pieChart = echarts.init(document.getElementById('pie-chart'), 'dark');
+
+        document.getElementById('drop-zone').onclick = () => document.getElementById('file-input').click();
+        document.getElementById('file-input').onchange = (e) => processFile(e.target.files[0]);
+
+        function setSortMode(mode) {
+            currentSortMode = mode;
+            const btnFail = document.getElementById('btn-sort-fail');
+            const btnPass = document.getElementById('btn-sort-pass');
+            if (mode === 'fail') {
+                btnFail.className = "px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all bg-red-500 text-white shadow-lg shadow-red-500/20";
+                btnPass.className = "px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white";
+            } else {
+                btnFail.className = "px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white";
+                btnPass.className = "px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all bg-emerald-500 text-white shadow-lg shadow-emerald-500/20";
+            }
+            updateUI();
+        }
+
+        function switchTab(tab) {
+            document.getElementById('view-overview').classList.toggle('hidden', tab !== 'overview');
+            document.getElementById('view-carrier').classList.toggle('hidden', tab !== 'carrier');
+            document.getElementById('tab-overview').className = tab === 'overview' ? 'pb-3 text-sm tab-active' : 'pb-3 text-sm text-slate-400';
+            document.getElementById('tab-carrier').className = tab === 'carrier' ? 'pb-3 text-sm tab-active' : 'pb-3 text-sm text-slate-400';
+            if (tab === 'overview') setTimeout(() => { pieChart.resize(); }, 50);
+        }
+
+        function getWeekNumber(d) {
+            d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+            d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+            let yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+            return `${d.getUTCFullYear()}-W${Math.ceil((((d - yearStart) / 86400000) + 1) / 7).toString().padStart(2, '0')}`;
+        }
+
+        function processFile(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result.trim();
+                const lines = content.split(/\r?\n/);
+                const delimiter = lines[0].includes('\t') ? '\t' : ',';
+                const headers = lines[0].split(delimiter).map(h => h.trim().toUpperCase().replace(/"/g, ''));
+
+                const lIdx = headers.findIndex(h => h.includes('LINE') || h.includes('AREA'));
+                const sIdx = headers.findIndex(h => h.includes('STATION') || h.includes('OPNO') || h.includes('PROCESS'));
+                const rIdx = headers.findIndex(h => h.includes('STATUS') || h.includes('RESULT') || h.includes('PASS'));
+                const cIdx = headers.findIndex(h => (h.includes('CARRIER') || h.includes('RFID') || h.includes('TRAY')) && !h.includes('TESTER'));
+                const tIdx = headers.findIndex(h => h.includes('DATE') || h.includes('TIME') || h.includes('TIMESTAMP'));
+                const seqIdx = headers.findIndex(h => h.includes('SEQ') || h.includes('STEP'));
+                const titleIdx = headers.findIndex(h => h.includes('TITLE') || h.includes('MSG') || h.includes('ERROR'));
+                const testerIdx = headers.findIndex(h => h.includes('TESTER') || h.includes('PC') || h.includes('MACHINE_ID'));
+
+                rawData = [];
+                timeData = { dates: new Set(), weeks: new Set(), months: new Set() };
+                carrierFailDetails = {};
+                const linesFound = new Set();
+
+                for (let i = 1; i < lines.length; i++) {
+                    const cols = lines[i].split(delimiter).map(c => c.trim().replace(/"/g, ''));
+                    if (cols.length < 2) continue;
+
+                    const lineName = lIdx !== -1 && cols[lIdx] ? cols[lIdx] : 'Line 1';
+                    const station = sIdx !== -1 && cols[sIdx] ? cols[sIdx] : 'Station 1';
+                    const resValue = (cols[rIdx] || '').toUpperCase();
+                    const result = resValue.includes('PASS') || resValue === 'OK' || resValue === '1' || resValue === 'TRUE';
+                    const carrier = cIdx !== -1 && cols[cIdx] ? cols[cIdx] : 'Unknown';
+                    const timestamp = tIdx !== -1 ? cols[tIdx] : '';
+                    const testerId = testerIdx !== -1 && cols[testerIdx] ? cols[testerIdx] : '-';
+
+                    let dateStr = 'Unknown', weekStr = 'Unknown', monthStr = 'Unknown';
+                    if (timestamp) {
+                        let d = new Date(timestamp);
+                        if (!isNaN(d.getTime())) {
+                            dateStr = d.toISOString().split('T')[0];
+                            weekStr = getWeekNumber(d);
+                            monthStr = dateStr.substring(0, 7);
+                            timeData.dates.add(dateStr);
+                            timeData.weeks.add(weekStr);
+                            timeData.months.add(monthStr);
+                        }
+                    }
+
+                    const rowObj = {
+                        line: lineName, station, result, carrier, date: dateStr, week: weekStr, month: monthStr,
+                        seq: seqIdx !== -1 ? cols[seqIdx] : '-',
+                        title: titleIdx !== -1 ? cols[titleIdx] : 'N/A',
+                        time: timestamp,
+                        tester: testerId
+                    };
+                    rawData.push(rowObj);
+                    linesFound.add(lineName);
+
+                    // FIX: เก็บ fail details สำหรับทุก carrier รวมถึง Unknown
+                    if (!result) {
+                        if (!carrierFailDetails[carrier]) carrierFailDetails[carrier] = [];
+                        carrierFailDetails[carrier].push(rowObj);
+                    }
+                }
+
+                const lineSelect = document.getElementById('line-filter');
+                lineSelect.innerHTML = '<option value="ALL">All Lines</option>' +
+                    Array.from(linesFound).sort().map(l => `<option value="${l}">${l}</option>`).join('');
+
+                updateTimeOptions();
+                updateStationOptions();
+                updateUI();
+                document.getElementById('drop-text').innerText = file.name;
+            };
+            reader.readAsText(file);
+        }
+
+        function updateTimeOptions() {
+            const type = document.getElementById('time-type').value;
+            const container = document.getElementById('time-val-container');
+            const valSelect = document.getElementById('time-value');
+            if (type === 'ALL') { container.classList.add('hidden'); }
+            else {
+                container.classList.remove('hidden');
+                let opts = [];
+                if (type === 'DATE') opts = Array.from(timeData.dates).sort().reverse();
+                if (type === 'WEEK') opts = Array.from(timeData.weeks).sort().reverse();
+                if (type === 'MONTH') opts = Array.from(timeData.months).sort().reverse();
+                valSelect.innerHTML = opts.map(o => `<option value="${o}">${o}</option>`).join('');
+            }
+        }
+
+        function updateStationOptions() {
+            const selectedLine = document.getElementById('line-filter').value;
+            const stationSelect = document.getElementById('station-filter');
+            const stations = new Set();
+            rawData.forEach(d => { if (selectedLine === 'ALL' || d.line === selectedLine) stations.add(d.station); });
+            stationSelect.innerHTML = '<option value="ALL">All Stations</option>' +
+                Array.from(stations).sort().map(s => `<option value="${s}">${s}</option>`).join('');
+        }
+
+        // Build hourly/daily trend data for a station
+        function buildStationTrend(rows) {
+            // Group by date or hour
+            const buckets = {};
+            rows.forEach(r => {
+                const key = r.date !== 'Unknown' ? r.date : 'N/A';
+                if (!buckets[key]) buckets[key] = { pass: 0, fail: 0 };
+                r.result ? buckets[key].pass++ : buckets[key].fail++;
+            });
+            const keys = Object.keys(buckets).sort();
+            return {
+                labels: keys,
+                passData: keys.map(k => buckets[k].pass),
+                failData: keys.map(k => buckets[k].fail),
+            };
+        }
+
+        // Render mini ECharts bar chart into a div
+        function renderMiniChart(containerId, stationName, passRows, failRows) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+
+            // Dispose old instance if exists
+            if (miniChartInstances[containerId]) {
+                miniChartInstances[containerId].dispose();
+            }
+
+            const allRows = [...passRows, ...failRows];
+            if (allRows.length === 0) return;
+
+            const trend = buildStationTrend(allRows);
+            if (trend.labels.length === 0) return;
+
+            const chart = echarts.init(el, 'dark');
+            miniChartInstances[containerId] = chart;
+
+            // Dynamic Y-axis max based on actual data
+            const allValues = [...trend.passData, ...trend.failData];
+            const maxVal = Math.max(...allValues, 1);
+
+            chart.setOption({
+                backgroundColor: 'transparent',
+                grid: { top: 10, bottom: 20, left: 4, right: 4, containLabel: true },
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: { type: 'shadow' },
+                    textStyle: { fontSize: 10, fontWeight: 'bold' },
+                    backgroundColor: '#1e293b',
+                    borderColor: '#334155',
+                    formatter: (params) => {
+                        let s = `<div style="font-size:10px;font-weight:900;color:#94a3b8;margin-bottom:4px">${params[0].axisValue}</div>`;
+                        params.forEach(p => {
+                            const color = p.seriesName === 'Pass' ? '#22c55e' : '#ef4444';
+                            s += `<div style="display:flex;justify-content:space-between;gap:16px"><span style="color:${color};font-weight:900">${p.seriesName}</span><span style="color:#fff;font-weight:900;font-family:monospace">${p.value.toLocaleString()}</span></div>`;
+                        });
+                        return s;
+                    }
+                },
+                xAxis: {
+                    type: 'category',
+                    data: trend.labels,
+                    axisLabel: { color: '#64748b', fontSize: 8, rotate: trend.labels.length > 4 ? 30 : 0 },
+                    axisLine: { lineStyle: { color: '#334155' } },
+                    axisTick: { show: false },
+                    splitLine: { show: false }
+                },
+                yAxis: {
+                    type: 'value',
+                    min: 0,
+                    max: Math.ceil(maxVal * 1.15), // 15% headroom
+                    axisLabel: { color: '#64748b', fontSize: 8, formatter: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v },
+                    axisLine: { show: false },
+                    axisTick: { show: false },
+                    splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } }
+                },
+                series: [
+                    {
+                        name: 'Pass',
+                        type: 'bar',
+                        data: trend.passData,
+                        itemStyle: {
+                            color: {
+                                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                                colorStops: [{ offset: 0, color: '#4ade80' }, { offset: 1, color: '#16a34a' }]
+                            },
+                            borderRadius: [4, 4, 0, 0]
+                        },
+                        barGap: '10%',
+                        barCategoryGap: '30%',
+                        label: {
+                            show: trend.labels.length <= 7,
+                            position: 'top',
+                            fontSize: 8,
+                            fontWeight: 900,
+                            color: '#4ade80',
+                            formatter: p => p.value > 0 ? p.value.toLocaleString() : ''
+                        },
+                        emphasis: { itemStyle: { color: '#86efac' } }
+                    },
+                    {
+                        name: 'Fail',
+                        type: 'bar',
+                        data: trend.failData,
+                        itemStyle: {
+                            color: {
+                                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                                colorStops: [{ offset: 0, color: '#f87171' }, { offset: 1, color: '#b91c1c' }]
+                            },
+                            borderRadius: [4, 4, 0, 0]
+                        },
+                        barGap: '10%',
+                        barCategoryGap: '30%',
+                        label: {
+                            show: trend.labels.length <= 7,
+                            position: 'top',
+                            fontSize: 8,
+                            fontWeight: 900,
+                            color: '#f87171',
+                            formatter: p => p.value > 0 ? p.value.toLocaleString() : ''
+                        },
+                        emphasis: { itemStyle: { color: '#fca5a5' } }
+                    }
+                ]
+            });
+        }
+
+        function updateUI() {
+            const timeType = document.getElementById('time-type').value;
+            const timeVal = document.getElementById('time-value').value;
+            const lineFilter = document.getElementById('line-filter').value;
+            const stationFilter = document.getElementById('station-filter').value;
+            const searchTerm = document.getElementById('carrier-search').value.toUpperCase();
+
+            let pass = 0, fail = 0;
+            let carrierStats = {};
+            let stationStats = {};
+            let failReasons = {};
+
+            stationRowCache = {};
+
+            rawData.forEach(d => {
+                const timeMatch = (timeType === 'ALL' || (timeType === 'DATE' && d.date === timeVal) || (timeType === 'WEEK' && d.week === timeVal) || (timeType === 'MONTH' && d.month === timeVal));
+                if (!timeMatch) return;
+                const lineMatch = (lineFilter === 'ALL' || d.line === lineFilter);
+                if (!lineMatch) return;
+
+                if (!carrierStats[d.carrier]) carrierStats[d.carrier] = { pass: 0, fail: 0 };
+                if (!stationRowCache[d.station]) stationRowCache[d.station] = { pass: [], fail: [] };
+                if (d.result) stationRowCache[d.station].pass.push(d);
+                else stationRowCache[d.station].fail.push(d);
+
+                const stationMatch = (stationFilter === 'ALL' || d.station === stationFilter);
+                if (stationMatch) {
+                    d.result ? pass++ : fail++;
+                    d.result ? carrierStats[d.carrier].pass++ : carrierStats[d.carrier].fail++;
+                    if (!d.result && d.title !== 'N/A') {
+                        failReasons[d.title] = (failReasons[d.title] || 0) + 1;
+                    }
+                }
+                if (!stationStats[d.station]) stationStats[d.station] = { pass: 0, fail: 0 };
+                d.result ? stationStats[d.station].pass++ : stationStats[d.station].fail++;
+            });
+
+            const total = pass + fail;
+            document.getElementById('total-count-text').innerText = total.toLocaleString();
+            document.getElementById('total-pass-text').innerText = pass.toLocaleString();
+            document.getElementById('total-fail-text').innerText = fail.toLocaleString();
+            document.getElementById('display-yield').innerText = ((pass / (total || 1)) * 100).toFixed(1) + '%';
+
+            const sortedReasons = Object.entries(failReasons).sort((a, b) => b[1] - a[1]).slice(0, 5);
+            document.getElementById('pareto-list').innerHTML = sortedReasons.length ? sortedReasons.map(([reason, count]) => `
+                <div onclick="showErrorPopover('${reason.replace(/'/g, "\\'")}')" class="flex justify-between items-center bg-slate-900/50 p-2 rounded-lg border-l-2 border-red-500 cursor-pointer hover:bg-red-500/10 transition-all">
+                    <span class="text-[10px] text-white font-bold truncate max-w-[150px] pointer-events-none">${reason}</span>
+                    <span class="text-[10px] text-red-400 font-black pointer-events-none">${count}</span>
+                </div>`).join('') : '<p class="text-[10px] text-slate-500 italic">No failure data</p>';
+
+            pieChart.setOption({
+                series: [{
+                    type: 'pie', radius: ['60%', '80%'],
+                    itemStyle: { borderRadius: 10, borderColor: '#0b1120', borderWidth: 5 },
+                    label: { show: true, position: 'center', formatter: '{v|' + total.toLocaleString() + '}\n{t|TOTAL}', rich: { v: { fontSize: 32, fontWeight: 900, color: '#fff' }, t: { fontSize: 12, color: '#64748b', fontWeight: 'bold' } } },
+                    data: [
+                        { value: pass, name: 'PASS', itemStyle: { color: '#22c55e' } },
+                        { value: fail, name: 'FAIL', itemStyle: { color: '#ef4444' } }
+                    ]
+                }]
+            });
+
+            // Dispose old mini charts
+            Object.values(miniChartInstances).forEach(c => { try { c.dispose(); } catch(e) {} });
+            miniChartInstances = {};
+
+            const stationsToShow = stationFilter === 'ALL' ? Object.keys(stationStats).sort() : [stationFilter];
+            document.getElementById('station-grid').innerHTML = stationsToShow.map(s => {
+                const d = stationStats[s] || { pass: 0, fail: 0 };
+                const hasPass = d.pass > 0;
+                const hasFail = d.fail > 0;
+                const chartId = `mini-chart-${s.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                const stationYield = ((d.pass / ((d.pass + d.fail) || 1)) * 100).toFixed(1);
+                return `
+                    <div class="glass p-5 rounded-2xl border-t-4 ${hasFail ? 'border-red-500' : 'border-emerald-500'} station-card cursor-pointer" onclick="openStationOverview('${s.replace(/'/g, "\\'")}')">
+                        <div class="mb-3 border-b border-white/10 pb-2 flex justify-between items-start">
+                            <div>
+                                <p class="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-0.5">Station</p>
+                                <h3 class="text-sm font-black text-white uppercase truncate max-w-[160px]">${s}</h3>
+                            </div>
+                            <span class="text-xs font-black px-2 py-0.5 rounded-full ${parseFloat(stationYield) >= 95 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}">${stationYield}%</span>
+                        </div>
+
+                        <!-- Mini Trend Chart -->
+                        <div class="mb-3 bg-slate-900/50 rounded-xl overflow-hidden">
+                            <p class="text-[8px] text-slate-500 font-black uppercase tracking-widest px-2 pt-2">Trend by Date</p>
+                            <div id="${chartId}" class="mini-chart"></div>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center">
+                                <span class="text-[9px] font-black text-slate-500 uppercase">Total Input</span>
+                                <span class="text-lg font-black text-white font-mono">${(d.pass + d.fail).toLocaleString()}</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-center font-black">
+                                <button onclick="event.stopPropagation(); showStationDetail('${s.replace(/'/g, "\\'")}', 'pass')" class="stat-btn bg-emerald-600 hover:bg-emerald-500 p-2 rounded-xl flex flex-col items-center ${!hasPass ? 'opacity-40 cursor-default' : ''}" ${!hasPass ? 'disabled' : ''}>
+                                    <p class="text-lg text-white font-mono">${d.pass.toLocaleString()}</p>
+                                    <p class="text-[9px] text-emerald-200 uppercase tracking-widest font-black">Pass ▶</p>
+                                </button>
+                                <button onclick="event.stopPropagation(); showStationDetail('${s.replace(/'/g, "\\'")}', 'fail')" class="stat-btn ${hasFail ? 'bg-red-600 hover:bg-red-500' : 'bg-slate-700 opacity-40 cursor-default'} p-2 rounded-xl flex flex-col items-center" ${!hasFail ? 'disabled' : ''}>
+                                    <p class="text-lg text-white font-mono">${d.fail.toLocaleString()}</p>
+                                    <p class="text-[9px] ${hasFail ? 'text-red-200' : 'text-slate-400'} uppercase tracking-widest font-black">${hasFail ? 'Fail ▶' : 'Fail'}</p>
+                                </button>
+                            </div>
+                        </div>
+                        <p class="text-center text-[8px] text-slate-600 font-black uppercase tracking-widest mt-3">Click card for full detail ↗</p>
+                    </div>`;
+            }).join('');
+
+            // Render mini charts after DOM update
+            setTimeout(() => {
+                stationsToShow.forEach(s => {
+                    const cache = stationRowCache[s] || { pass: [], fail: [] };
+                    const chartId = `mini-chart-${s.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                    renderMiniChart(chartId, s, cache.pass, cache.fail);
+                });
+            }, 50);
+
+            // Carrier table
+            const sortedCarriers = Object.entries(carrierStats)
+                .filter(([id]) => id.toUpperCase().includes(searchTerm))
+                .sort((a, b) => {
+                    if (currentSortMode === 'fail') return (b[1].fail - a[1].fail) || (b[1].pass - a[1].pass);
+                    else return (b[1].pass - a[1].pass) || (b[1].fail - a[1].fail);
+                });
+
+            document.getElementById('carrier-table-body').innerHTML = sortedCarriers.map(([id, stat]) => {
+                const cTotal = stat.pass + stat.fail;
+                const cYield = ((stat.pass / (cTotal || 1)) * 100).toFixed(1);
+                const isUnknown = id === 'Unknown';
+                return `<tr class="border-b border-white/5 font-bold font-mono text-xs clickable-row" onclick="showFailDetails('${id.replace(/'/g, "\\'")}')">
+                    <td class="p-4 ${isUnknown ? 'text-slate-400 italic' : 'text-blue-400'}">${id}</td>
+                    <td class="p-4 text-right text-white">${cTotal.toLocaleString()}</td>
+                    <td class="p-4 text-right text-emerald-400 font-black">${stat.pass.toLocaleString()}</td>
+                    <td class="p-4 text-right ${stat.fail > 0 ? 'text-red-500 font-black' : 'text-slate-600'}">${stat.fail.toLocaleString()}</td>
+                    <td class="p-4 text-right"><span class="px-2 py-1 rounded text-[10px] border ${parseFloat(cYield) < 95 ? 'border-red-500 text-red-500' : 'border-blue-500 text-blue-500'}">${cYield}%</span></td>
+                </tr>`;
+            }).join('');
+        }
+
+        // ── Station Overview Modal ──────────────────────────────────────
+        let sovChart = null;
+        let sovAllRows = [];
+        let sovCurrentTab = 'all';
+
+        function openStationOverview(stationName) {
+            const cache = stationRowCache[stationName];
+            if (!cache) return;
+            const passRows = cache.pass || [];
+            const failRows = cache.fail || [];
+            sovAllRows = [
+                ...passRows.map(r => ({ ...r, _result: true })),
+                ...failRows.map(r => ({ ...r, _result: false }))
+            ].sort((a, b) => (b.time || '').localeCompare(a.time || ''));
+
+            const total = passRows.length + failRows.length;
+            const yld = ((passRows.length / (total || 1)) * 100).toFixed(1);
+
+            document.getElementById('sov-title').innerText = stationName;
+            document.getElementById('sov-total').innerText = total.toLocaleString();
+            document.getElementById('sov-pass').innerText = passRows.length.toLocaleString();
+            document.getElementById('sov-fail').innerText = failRows.length.toLocaleString();
+
+            const badge = document.getElementById('sov-yield-badge');
+            const isGood = parseFloat(yld) >= 95;
+            badge.innerText = `Yield ${yld}%`;
+            badge.className = `px-4 py-2 rounded-2xl text-sm font-black uppercase ${isGood ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-red-500/20 text-red-400 border border-red-500/40'}`;
+
+            document.getElementById('sov-search').value = '';
+            sovCurrentTab = 'all';
+            sovUpdateTabUI();
+            sovRenderTable(sovAllRows);
+
+            document.getElementById('station-overview-modal').classList.remove('hidden');
+
+            // Render big chart
+            setTimeout(() => {
+                if (sovChart) { try { sovChart.dispose(); } catch(e) {} }
+                const el = document.getElementById('sov-chart');
+                sovChart = echarts.init(el, 'dark');
+                const trend = buildStationTrend([...passRows, ...failRows]);
+                const allVals = [...trend.passData, ...trend.failData];
+                const maxV = Math.max(...allVals, 1);
+                sovChart.setOption({
+                    backgroundColor: 'transparent',
+                    grid: { top: 30, bottom: 30, left: 10, right: 10, containLabel: true },
+                    legend: {
+                        top: 4, right: 10,
+                        data: ['Pass', 'Fail'],
+                        textStyle: { color: '#94a3b8', fontSize: 10, fontWeight: 900 },
+                        icon: 'roundRect'
+                    },
+                    tooltip: {
+                        trigger: 'axis',
+                        axisPointer: { type: 'shadow' },
+                        backgroundColor: '#1e293b',
+                        borderColor: '#334155',
+                        textStyle: { fontSize: 11, fontWeight: 'bold' },
+                        formatter: params => {
+                            let s = `<div style="font-size:10px;font-weight:900;color:#94a3b8;margin-bottom:6px">${params[0].axisValue}</div>`;
+                            const pVal = params.find(p => p.seriesName === 'Pass');
+                            const fVal = params.find(p => p.seriesName === 'Fail');
+                            const tot = (pVal?.value||0) + (fVal?.value||0);
+                            if (pVal) s += `<div style="display:flex;justify-content:space-between;gap:20px"><span style="color:#4ade80;font-weight:900">Pass</span><span style="color:#fff;font-weight:900;font-family:monospace">${pVal.value.toLocaleString()}</span></div>`;
+                            if (fVal) s += `<div style="display:flex;justify-content:space-between;gap:20px"><span style="color:#f87171;font-weight:900">Fail</span><span style="color:#fff;font-weight:900;font-family:monospace">${fVal.value.toLocaleString()}</span></div>`;
+                            s += `<div style="border-top:1px solid #334155;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;gap:20px"><span style="color:#94a3b8;font-weight:900">Yield</span><span style="color:#60a5fa;font-weight:900;font-family:monospace">${((( pVal?.value||0)/( tot||1))*100).toFixed(1)}%</span></div>`;
+                            return s;
+                        }
+                    },
+                    xAxis: {
+                        type: 'category',
+                        data: trend.labels,
+                        axisLabel: { color: '#64748b', fontSize: 10, rotate: trend.labels.length > 8 ? 30 : 0 },
+                        axisLine: { lineStyle: { color: '#334155' } },
+                        axisTick: { show: false }
+                    },
+                    yAxis: {
+                        type: 'value',
+                        min: 0,
+                        max: Math.ceil(maxV * 1.2),
+                        axisLabel: { color: '#64748b', fontSize: 10, formatter: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v },
+                        axisLine: { show: false },
+                        axisTick: { show: false },
+                        splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } }
+                    },
+                    series: [
+                        {
+                            name: 'Pass', type: 'bar',
+                            data: trend.passData,
+                            itemStyle: { color: { type:'linear',x:0,y:0,x2:0,y2:1, colorStops:[{offset:0,color:'#4ade80'},{offset:1,color:'#15803d'}] }, borderRadius:[5,5,0,0] },
+                            barGap: '8%', barCategoryGap: '28%',
+                            label: { show: trend.labels.length <= 10, position:'top', fontSize:10, fontWeight:900, color:'#4ade80', formatter: p => p.value > 0 ? p.value.toLocaleString() : '' },
+                            emphasis: { itemStyle: { color:'#86efac' } }
+                        },
+                        {
+                            name: 'Fail', type: 'bar',
+                            data: trend.failData,
+                            itemStyle: { color: { type:'linear',x:0,y:0,x2:0,y2:1, colorStops:[{offset:0,color:'#f87171'},{offset:1,color:'#991b1b'}] }, borderRadius:[5,5,0,0] },
+                            barGap: '8%', barCategoryGap: '28%',
+                            label: { show: trend.labels.length <= 10, position:'top', fontSize:10, fontWeight:900, color:'#f87171', formatter: p => p.value > 0 ? p.value.toLocaleString() : '' },
+                            emphasis: { itemStyle: { color:'#fca5a5' } }
+                        }
+                    ]
+                });
+            }, 80);
+        }
+
+        function closeStationOverviewModal() {
+            document.getElementById('station-overview-modal').classList.add('hidden');
+            if (sovChart) { try { sovChart.dispose(); } catch(e) {} sovChart = null; }
+        }
+
+        function sovSwitchTab(tab) {
+            sovCurrentTab = tab;
+            sovUpdateTabUI();
+            sovFilterTable();
+        }
+
+        function sovUpdateTabUI() {
+            const styles = {
+                all:  { active: 'bg-blue-500 text-white',    inactive: 'text-slate-400 hover:text-white' },
+                pass: { active: 'bg-emerald-500 text-white', inactive: 'text-slate-400 hover:text-white' },
+                fail: { active: 'bg-red-500 text-white',     inactive: 'text-slate-400 hover:text-white' },
+            };
+            ['all','pass','fail'].forEach(t => {
+                const btn = document.getElementById(`sov-tab-${t}`);
+                const isActive = t === sovCurrentTab;
+                btn.className = `px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${isActive ? styles[t].active : styles[t].inactive}`;
+            });
+        }
+
+        function sovFilterTable() {
+            const term = document.getElementById('sov-search').value.toUpperCase();
+            let rows = sovAllRows;
+            if (sovCurrentTab === 'pass') rows = rows.filter(r => r._result);
+            if (sovCurrentTab === 'fail') rows = rows.filter(r => !r._result);
+            if (term) rows = rows.filter(r =>
+                r.carrier.toUpperCase().includes(term) ||
+                r.tester.toUpperCase().includes(term) ||
+                r.title.toUpperCase().includes(term)
+            );
+            sovRenderTable(rows);
+        }
+
+        function sovRenderTable(rows) {
+            document.getElementById('sov-count').innerText = `${rows.length.toLocaleString()} records`;
+            document.getElementById('sov-table-body').innerHTML = rows.length
+                ? rows.map(d => `
+                    <tr class="border-b border-white/5 hover:bg-white/5">
+                        <td class="p-3">
+                            <span class="px-2 py-0.5 rounded text-[9px] font-black uppercase ${d._result ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}">${d._result ? 'PASS' : 'FAIL'}</span>
+                        </td>
+                        <td class="p-3 text-blue-400 font-bold">${d.carrier}</td>
+                        <td class="p-3 text-purple-400 font-bold">${d.tester}</td>
+                        <td class="p-3 text-slate-400">${d.seq}</td>
+                        <td class="p-3 max-w-[220px] truncate ${!d._result ? 'text-red-300' : 'text-white'}" title="${d.title}">${d.title}</td>
+                        <td class="p-3 text-right text-slate-500 text-[10px]">${d.time}</td>
+                    </tr>`).join('')
+                : '<tr><td colspan="6" class="p-10 text-center text-slate-500 italic">No records found</td></tr>';
+        }
+        // ── End Station Overview Modal ───────────────────────────────────
+
+        function showStationDetail(stationName, type) {
+            const cache = stationRowCache[stationName];
+            if (!cache) return;
+            const rows = type === 'pass' ? cache.pass : cache.fail;
+            currentStationModalRows = rows;
+            const isPass = type === 'pass';
+            const header = document.getElementById('station-modal-header');
+            header.className = `p-6 border-b border-white/10 flex justify-between items-center ${isPass ? 'bg-emerald-500/10' : 'bg-red-500/10'}`;
+            document.getElementById('station-modal-title').innerText = stationName;
+            document.getElementById('station-modal-subtitle').innerText = isPass ? 'Pass Record Log' : 'Failure Record Log';
+            const badge = document.getElementById('station-modal-badge');
+            badge.innerText = isPass ? `${rows.length.toLocaleString()} PASS` : `${rows.length.toLocaleString()} FAIL`;
+            badge.className = `px-3 py-1 rounded-full text-xs font-black uppercase ${isPass ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-red-500/20 text-red-400 border border-red-500/40'}`;
+            document.getElementById('station-modal-search').value = '';
+            renderStationModalTable(rows, isPass);
+            document.getElementById('station-modal').classList.remove('hidden');
+        }
+
+        function renderStationModalTable(rows, isPass) {
+            document.getElementById('station-modal-count').innerText = `${rows.length.toLocaleString()} records`;
+            document.getElementById('station-modal-body').innerHTML = rows.length ? rows.map(d => `
+                <tr class="border-b border-white/5 hover:bg-white/5">
+                    <td class="p-4 text-blue-400 font-bold">${d.carrier}</td>
+                    <td class="p-4 text-purple-400 font-bold">${d.tester}</td>
+                    <td class="p-4 text-slate-400">${d.seq}</td>
+                    <td class="p-4 text-white max-w-[200px] truncate ${!isPass ? 'text-red-300' : ''}" title="${d.title}">${d.title}</td>
+                    <td class="p-4 text-right text-slate-500 text-[10px]">${d.time}</td>
+                </tr>`).join('') : '<tr><td colspan="5" class="p-10 text-center text-slate-500 italic">No data found</td></tr>';
+        }
+
+        function filterStationModalTable() {
+            const term = document.getElementById('station-modal-search').value.toUpperCase();
+            const isPass = document.getElementById('station-modal-subtitle').innerText.includes('Pass');
+            const filtered = currentStationModalRows.filter(r =>
+                r.carrier.toUpperCase().includes(term) || r.tester.toUpperCase().includes(term) || r.title.toUpperCase().includes(term)
+            );
+            renderStationModalTable(filtered, isPass);
+        }
+
+        function showFailDetails(carrierId) {
+            // FIX: ดึงข้อมูล fail จาก carrierFailDetails ได้ทุก carrier รวมถึง Unknown
+            const details = carrierFailDetails[carrierId] || [];
+            document.getElementById('modal-carrier-id').innerText = carrierId + (carrierId === 'Unknown' ? ' (No Carrier ID)' : '');
+            document.getElementById('modal-table-body').innerHTML = details.length ? details.map(d => `
+                <tr class="border-b border-white/5">
+                    <td class="py-3 text-blue-400">${d.station}</td>
+                    <td class="py-3 text-purple-400">${d.tester}</td>
+                    <td class="py-3">${d.seq}</td>
+                    <td class="py-3 text-red-400 font-bold">${d.title}</td>
+                    <td class="py-3 text-right text-slate-500">${d.time}</td>
+                </tr>`).join('') : '<tr><td colspan="5" class="py-10 text-center text-slate-500">No failure logs for this carrier</td></tr>';
+            document.getElementById('fail-modal').classList.remove('hidden');
+        }
+
+        function closeModal() { document.getElementById('fail-modal').classList.add('hidden'); }
+        function closeStationModal() { document.getElementById('station-modal').classList.add('hidden'); }
+        function showErrorPopover(msg) {
+            document.getElementById('popover-content').innerText = msg;
+            document.getElementById('popover-overlay').classList.add('active');
+        }
+        function hideErrorPopover() { document.getElementById('popover-overlay').classList.remove('active'); }
+        window.addEventListener('resize', () => {
+            pieChart.resize();
+            Object.values(miniChartInstances).forEach(c => { try { c.resize(); } catch(e) {} });
+            if (sovChart) { try { sovChart.resize(); } catch(e) {} }
+        });
+        updateUI();
+    </script>
+</body>
+</html>
