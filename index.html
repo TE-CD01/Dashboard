@@ -317,30 +317,63 @@
         </div>
 
         <!-- Carrier Tab -->
-        <div id="view-carrier" class="hidden glass rounded-2xl overflow-hidden">
-            <div class="p-4 bg-blue-500/10 border-b border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
-                <div class="flex items-center gap-3">
-                    <span class="text-blue-400 font-black text-[10px] uppercase tracking-widest">Sort:</span>
-                    <div class="flex bg-slate-900 p-1 rounded-xl border border-white/10">
-                        <button onclick="setSortMode('fail')" id="btn-sort-fail" class="px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all bg-red-500 text-white shadow-lg shadow-red-500/20">Fail</button>
-                        <button onclick="setSortMode('pass')" id="btn-sort-pass" class="px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">Pass</button>
+        <div id="view-carrier" class="hidden space-y-4">
+
+            <!-- Carrier Fail Chart -->
+            <div class="glass rounded-2xl overflow-hidden">
+                <div class="px-5 py-4 border-b border-white/10 flex flex-col md:flex-row justify-between items-center gap-3">
+                    <div>
+                        <p class="text-[9px] text-red-400 font-black uppercase tracking-widest">Carrier Performance Chart</p>
+                        <h3 class="text-sm font-black text-white">Pass / Fail Count per Carrier</h3>
+                    </div>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <div class="flex bg-slate-900 p-1 rounded-xl border border-white/10 text-[10px] font-black uppercase gap-1">
+                            <button onclick="setCarrierChartMode('fail')" id="cChart-btn-fail" class="px-3 py-1.5 rounded-lg transition-all bg-red-500 text-white">Top Fail</button>
+                            <button onclick="setCarrierChartMode('pass')" id="cChart-btn-pass" class="px-3 py-1.5 rounded-lg transition-all text-slate-400 hover:text-white">Top Pass</button>
+                            <button onclick="setCarrierChartMode('total')" id="cChart-btn-total" class="px-3 py-1.5 rounded-lg transition-all text-slate-400 hover:text-white">Total</button>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[9px] text-slate-500 font-black uppercase tracking-widest">Top</span>
+                            <select id="carrier-chart-topn" onchange="renderCarrierChart()" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs font-black outline-none">
+                                <option value="10">10</option>
+                                <option value="20">20</option>
+                                <option value="30">30</option>
+                                <option value="50">50</option>
+                                <option value="9999">All</option>
+                            </select>
+                            <span class="text-[9px] text-slate-500 font-black uppercase tracking-widest">Carriers</span>
+                        </div>
                     </div>
                 </div>
-                <input type="text" id="carrier-search" oninput="updateUI()" placeholder="SEARCH CARRIER / SERIAL ID..." class="bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs font-black outline-none w-full md:w-72 focus:border-blue-500 transition-all">
+                <div id="carrier-chart" style="width:100%; height:380px;"></div>
             </div>
-            <div class="max-h-[600px] overflow-auto">
-                <table class="w-full text-left text-sm">
-                    <thead id="carrier-thead" class="sticky top-0 bg-slate-800 text-[10px] text-slate-500 uppercase font-black tracking-widest">
-                        <tr>
-                            <th class="p-4">Carrier ID</th>
-                            <th class="p-4 text-right font-black">Total</th>
-                            <th class="p-4 text-right text-emerald-500 font-black">Pass</th>
-                            <th class="p-4 text-right text-red-500 font-black">Fail</th>
-                            <th class="p-4 text-right font-black">Yield</th>
-                        </tr>
-                    </thead>
-                    <tbody id="carrier-table-body"></tbody>
-                </table>
+
+            <!-- Carrier Table -->
+            <div class="glass rounded-2xl overflow-hidden">
+                <div class="p-4 bg-blue-500/10 border-b border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div class="flex items-center gap-3">
+                        <span class="text-blue-400 font-black text-[10px] uppercase tracking-widest">Sort:</span>
+                        <div class="flex bg-slate-900 p-1 rounded-xl border border-white/10">
+                            <button onclick="setSortMode('fail')" id="btn-sort-fail" class="px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all bg-red-500 text-white shadow-lg shadow-red-500/20">Fail</button>
+                            <button onclick="setSortMode('pass')" id="btn-sort-pass" class="px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">Pass</button>
+                        </div>
+                    </div>
+                    <input type="text" id="carrier-search" oninput="updateUI()" placeholder="SEARCH CARRIER / SERIAL ID..." class="bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs font-black outline-none w-full md:w-72 focus:border-blue-500 transition-all">
+                </div>
+                <div class="max-h-[500px] overflow-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead id="carrier-thead" class="sticky top-0 bg-slate-800 text-[10px] text-slate-500 uppercase font-black tracking-widest">
+                            <tr>
+                                <th class="p-4">Carrier ID</th>
+                                <th class="p-4 text-right font-black">Total</th>
+                                <th class="p-4 text-right text-emerald-500 font-black">Pass</th>
+                                <th class="p-4 text-right text-red-500 font-black">Fail</th>
+                                <th class="p-4 text-right font-black">Yield</th>
+                            </tr>
+                        </thead>
+                        <tbody id="carrier-table-body"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -354,6 +387,9 @@
         let currentSortMode = 'fail';
         let miniChartInstances = {};
         let pieChart = echarts.init(document.getElementById('pie-chart'), 'dark');
+        let carrierChart = null;
+        let carrierChartMode = 'fail';
+        let lastCarrierStats = {};
 
         // ── Serial No state ──────────────────────────────────────────
         let rawHeaders = [];        // all headers from file
@@ -476,6 +512,7 @@
             document.getElementById('tab-overview').className = tab === 'overview' ? 'pb-3 text-sm tab-active' : 'pb-3 text-sm text-slate-400';
             document.getElementById('tab-carrier').className = tab === 'carrier' ? 'pb-3 text-sm tab-active' : 'pb-3 text-sm text-slate-400';
             if (tab === 'overview') setTimeout(() => { pieChart.resize(); }, 50);
+            if (tab === 'carrier') setTimeout(() => { renderCarrierChart(); }, 50);
         }
 
         function getWeekNumber(d) {
@@ -740,6 +777,10 @@
             document.getElementById('total-fail-text').innerText = fail.toLocaleString();
             document.getElementById('display-yield').innerText = ((pass / (total || 1)) * 100).toFixed(1) + '%';
 
+            // Cache for carrier chart
+            lastCarrierStats = carrierStats;
+            setTimeout(() => renderCarrierChart(), 50);
+
             const sortedReasons = Object.entries(failReasons).sort((a, b) => b[1] - a[1]).slice(0, 5);
             document.getElementById('pareto-list').innerHTML = sortedReasons.length ? sortedReasons.map(([reason, count]) => `
                 <div onclick="showErrorPopover('${reason.replace(/'/g, "\\'")}')" class="flex justify-between items-center bg-slate-900/50 p-2 rounded-lg border-l-2 border-red-500 cursor-pointer hover:bg-red-500/10 transition-all">
@@ -830,7 +871,126 @@
             }).join('');
         }
 
-        // ── Station Overview Modal ─────────────────────────────────────
+        // ── Carrier Chart ─────────────────────────────────────────────
+        function setCarrierChartMode(mode) {
+            carrierChartMode = mode;
+            ['fail','pass','total'].forEach(m => {
+                const btn = document.getElementById(`cChart-btn-${m}`);
+                if (m === mode) {
+                    const cls = m === 'fail' ? 'bg-red-500 text-white' : m === 'pass' ? 'bg-emerald-500 text-white' : 'bg-blue-500 text-white';
+                    btn.className = `px-3 py-1.5 rounded-lg transition-all ${cls}`;
+                } else {
+                    btn.className = 'px-3 py-1.5 rounded-lg transition-all text-slate-400 hover:text-white';
+                }
+            });
+            renderCarrierChart();
+        }
+
+        function renderCarrierChart() {
+            const el = document.getElementById('carrier-chart');
+            if (!el) return;
+            if (carrierChart) { try { carrierChart.dispose(); } catch(e) {} }
+
+            const topN = parseInt(document.getElementById('carrier-chart-topn').value) || 10;
+            const entries = Object.entries(lastCarrierStats);
+            if (!entries.length) return;
+
+            // sort by selected mode descending, take top N
+            const sorted = entries
+                .filter(([id]) => id !== 'Unknown')
+                .sort((a, b) => {
+                    if (carrierChartMode === 'fail')  return b[1].fail  - a[1].fail;
+                    if (carrierChartMode === 'pass')  return b[1].pass  - a[1].pass;
+                    return (b[1].pass + b[1].fail) - (a[1].pass + a[1].fail);
+                })
+                .slice(0, topN);
+
+            if (!sorted.length) return;
+
+            // Reverse for horizontal bar (bottom = highest)
+            sorted.reverse();
+
+            const labels   = sorted.map(([id]) => id);
+            const passData = sorted.map(([, s]) => s.pass);
+            const failData = sorted.map(([, s]) => s.fail);
+            const yieldData = sorted.map(([, s]) => {
+                const t = s.pass + s.fail;
+                return t ? +((s.pass / t) * 100).toFixed(1) : 0;
+            });
+
+            const barH = Math.max(28, Math.min(46, Math.floor(340 / sorted.length)));
+            const chartH = Math.max(380, sorted.length * (barH + 10) + 80);
+            el.style.height = chartH + 'px';
+
+            carrierChart = echarts.init(el, 'dark');
+            carrierChart.setOption({
+                backgroundColor: 'transparent',
+                grid: { top: 16, bottom: 20, left: 16, right: 80, containLabel: true },
+                legend: {
+                    top: 0, right: 80,
+                    data: ['Pass', 'Fail'],
+                    textStyle: { color: '#94a3b8', fontSize: 10, fontWeight: 900 },
+                    icon: 'roundRect', itemWidth: 12, itemHeight: 8
+                },
+                tooltip: {
+                    trigger: 'axis', axisPointer: { type: 'shadow' },
+                    backgroundColor: '#1e293b', borderColor: '#334155',
+                    textStyle: { fontSize: 11, fontWeight: 'bold' },
+                    formatter: params => {
+                        const carrierId = params[0].axisValue;
+                        const stat = lastCarrierStats[carrierId] || {};
+                        const t = (stat.pass||0) + (stat.fail||0);
+                        const yld = t ? ((stat.pass||0) / t * 100).toFixed(1) : '0.0';
+                        let s = `<div style="font-size:11px;font-weight:900;color:#e2e8f0;margin-bottom:6px;max-width:220px;word-break:break-all">${carrierId}</div>`;
+                        s += `<div style="display:flex;justify-content:space-between;gap:24px"><span style="color:#4ade80;font-weight:900">Pass</span><span style="color:#fff;font-weight:900;font-family:monospace">${(stat.pass||0).toLocaleString()}</span></div>`;
+                        s += `<div style="display:flex;justify-content:space-between;gap:24px"><span style="color:#f87171;font-weight:900">Fail</span><span style="color:#fff;font-weight:900;font-family:monospace">${(stat.fail||0).toLocaleString()}</span></div>`;
+                        s += `<div style="border-top:1px solid #334155;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;gap:24px"><span style="color:#94a3b8;font-weight:900">Total</span><span style="color:#fff;font-weight:900;font-family:monospace">${t.toLocaleString()}</span></div>`;
+                        s += `<div style="display:flex;justify-content:space-between;gap:24px"><span style="color:#60a5fa;font-weight:900">Yield</span><span style="color:#60a5fa;font-weight:900;font-family:monospace">${yld}%</span></div>`;
+                        return s;
+                    }
+                },
+                xAxis: {
+                    type: 'value',
+                    axisLabel: { color: '#64748b', fontSize: 10, formatter: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v },
+                    axisLine: { show: false }, axisTick: { show: false },
+                    splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } }
+                },
+                yAxis: {
+                    type: 'category', data: labels,
+                    axisLabel: {
+                        color: '#94a3b8', fontSize: 10, fontWeight: 'bold',
+                        formatter: v => v.length > 18 ? v.slice(0, 16) + '…' : v,
+                        width: 140, overflow: 'truncate'
+                    },
+                    axisLine: { lineStyle: { color: '#1e293b' } },
+                    axisTick: { show: false }
+                },
+                series: [
+                    {
+                        name: 'Pass', type: 'bar', data: passData, stack: 'total',
+                        itemStyle: { color: { type:'linear',x:0,y:0,x2:1,y2:0, colorStops:[{offset:0,color:'#15803d'},{offset:1,color:'#4ade80'}] }, borderRadius:[0,0,0,0] },
+                        barMaxWidth: barH,
+                        label: { show: true, position: 'inside', fontSize: 9, fontWeight: 900, color: '#fff',
+                            formatter: p => p.value > 0 ? p.value.toLocaleString() : '' },
+                        emphasis: { itemStyle: { color: '#86efac' } }
+                    },
+                    {
+                        name: 'Fail', type: 'bar', data: failData, stack: 'total',
+                        itemStyle: { color: { type:'linear',x:0,y:0,x2:1,y2:0, colorStops:[{offset:0,color:'#b91c1c'},{offset:1,color:'#f87171'}] }, borderRadius:[4,4,4,4] },
+                        barMaxWidth: barH,
+                        label: { show: true, position: 'right', fontSize: 10, fontWeight: 900, color: '#f87171',
+                            formatter: p => p.value > 0 ? `✕${p.value.toLocaleString()}` : '' },
+                        emphasis: { itemStyle: { color: '#fca5a5' } }
+                    }
+                ]
+            });
+
+            carrierChart.on('click', params => {
+                const carrierId = params.name || params.value;
+                if (carrierId) showFailDetails(carrierId);
+            });
+        }
+        // ── End Carrier Chart ─────────────────────────────────────────
         let sovChart = null;
         let sovAllRows = [];
         let sovCurrentTab = 'all';
@@ -1013,6 +1173,7 @@
             pieChart.resize();
             Object.values(miniChartInstances).forEach(c => { try { c.resize(); } catch(e) {} });
             if (sovChart) { try { sovChart.resize(); } catch(e) {} }
+            if (carrierChart) { try { carrierChart.resize(); } catch(e) {} }
         });
 
         updateUI();
