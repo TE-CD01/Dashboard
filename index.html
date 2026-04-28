@@ -79,12 +79,42 @@
     </div>
     <!-- ── End Column Mapper Modal ──────────────────────────────────── -->
 
-    <!-- Error Popover -->
-    <div id="popover-overlay" onclick="hideErrorPopover()">
-        <div id="error-popover" onclick="event.stopPropagation()" class="glass max-w-md w-full p-8 rounded-3xl border-t-2 border-red-500 shadow-2xl shadow-red-500/20">
-            <p class="text-[10px] text-red-500 font-black uppercase tracking-[0.2em] mb-3">Failure Reason Detail</p>
-            <div id="popover-content" class="text-sm font-bold leading-relaxed text-white break-words"></div>
-            <p class="mt-6 text-[9px] text-slate-500 uppercase font-black text-center tracking-widest italic">Click anywhere outside to close</p>
+    <!-- Fail Reason Detail Modal -->
+    <div id="pareto-modal" class="hidden fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div class="glass w-full max-w-4xl rounded-3xl overflow-hidden flex flex-col border-t-4 border-red-500" style="max-height:88vh;">
+            <!-- Header -->
+            <div class="flex-none px-6 py-4 border-b border-white/10 bg-red-500/10 flex justify-between items-start gap-4">
+                <div class="min-w-0">
+                    <p class="text-[9px] text-red-400 font-black uppercase tracking-widest mb-1">Fail Reason Detail</p>
+                    <h2 id="pareto-modal-title" class="text-base font-black text-white leading-snug break-words"></h2>
+                </div>
+                <div class="flex items-center gap-3 flex-shrink-0">
+                    <span id="pareto-modal-badge" class="px-3 py-1 rounded-full text-xs font-black uppercase bg-red-500/20 text-red-400 border border-red-500/40"></span>
+                    <button onclick="closeParetoModal()" class="text-slate-400 hover:text-white text-2xl font-black w-9 h-9 flex items-center justify-center rounded-xl hover:bg-white/10 transition-all">&times;</button>
+                </div>
+            </div>
+            <!-- Summary pills -->
+            <div id="pareto-modal-summary" class="flex-none px-5 py-3 border-b border-white/5 bg-slate-900/40 flex flex-wrap gap-3"></div>
+            <!-- Search + count -->
+            <div class="flex-none px-4 py-2 border-b border-white/5 bg-slate-900/30 flex items-center gap-3">
+                <input type="text" id="pareto-modal-search" oninput="filterParetoModal()" placeholder="Search station / carrier / tester..." class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-black outline-none focus:border-red-500 transition-all">
+                <span id="pareto-modal-count" class="text-[9px] text-slate-500 font-black uppercase tracking-widest whitespace-nowrap"></span>
+            </div>
+            <!-- Table -->
+            <div class="flex-1 overflow-auto">
+                <table class="w-full text-left text-xs font-mono">
+                    <thead class="sticky top-0 bg-slate-800 text-[10px] text-slate-500 uppercase font-black tracking-widest z-10">
+                        <tr>
+                            <th class="px-4 py-3">Station</th>
+                            <th class="px-4 py-3">Carrier ID</th>
+                            <th class="px-4 py-3">Tester ID</th>
+                            <th class="px-4 py-3">Seq</th>
+                            <th class="px-4 py-3 text-right">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pareto-modal-body" class="text-slate-300"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -390,6 +420,69 @@
         let carrierChart = null;
         let carrierChartMode = 'fail';
         let lastCarrierStats = {};
+        let lastFailReasonRows = {};
+        let lastSortedReasons = [];
+        let currentParetoRows = [];
+
+        // ── Pareto / Fail Reason Detail Modal ─────────────────────────
+        function openParetoModal(idx) {
+            const entry = lastSortedReasons[idx];
+            if (!entry) return;
+            const reason = entry[0];
+            const rows = lastFailReasonRows[reason] || [];
+            currentParetoRows = rows;
+
+            document.getElementById('pareto-modal-title').innerText = reason;
+            document.getElementById('pareto-modal-badge').innerText = `${rows.length.toLocaleString()} occurrences`;
+            document.getElementById('pareto-modal-search').value = '';
+
+            // Summary: individual station + carrier badges
+            const stations = [...new Set(rows.map(r => r.station))].sort();
+            const carriers = [...new Set(rows.map(r => r.carrier))].sort();
+            document.getElementById('pareto-modal-summary').innerHTML = `
+                <div class="w-full flex flex-wrap gap-1.5 items-center">
+                    <span class="text-[9px] text-blue-400 font-black uppercase tracking-widest flex-shrink-0 mr-1">Station</span>
+                    ${stations.map(s => `<span class="inline-block bg-blue-500/15 text-blue-300 border border-blue-500/25 rounded-lg px-2.5 py-1 text-[10px] font-black uppercase tracking-wide whitespace-nowrap">${s}</span>`).join('')}
+                </div>
+                <div class="w-full flex flex-wrap gap-1.5 items-center mt-1">
+                    <span class="text-[9px] text-amber-400 font-black uppercase tracking-widest flex-shrink-0 mr-1">Carrier</span>
+                    ${carriers.map(c => `<span class="inline-block bg-amber-500/15 text-amber-300 border border-amber-500/25 rounded-lg px-2.5 py-1 text-[10px] font-black uppercase tracking-wide whitespace-nowrap">${c}</span>`).join('')}
+                </div>`;
+
+            renderParetoTable(rows);
+            document.getElementById('pareto-modal').classList.remove('hidden');
+        }
+
+        function filterParetoModal() {
+            const term = document.getElementById('pareto-modal-search').value.toUpperCase();
+            if (!term) { renderParetoTable(currentParetoRows); return; }
+            renderParetoTable(currentParetoRows.filter(r =>
+                r.station.toUpperCase().includes(term) ||
+                r.carrier.toUpperCase().includes(term) ||
+                r.tester.toUpperCase().includes(term)
+            ));
+        }
+
+        function renderParetoTable(rows) {
+            document.getElementById('pareto-modal-count').innerText = `${rows.length.toLocaleString()} records`;
+            document.getElementById('pareto-modal-body').innerHTML = rows.length
+                ? rows.map(d => `
+                    <tr class="border-b border-white/5 hover:bg-red-500/5 transition-colors">
+                        <td class="px-4 py-3">
+                            <span class="inline-block bg-blue-500/15 text-blue-300 border border-blue-500/25 rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider whitespace-nowrap">${d.station}</span>
+                        </td>
+                        <td class="px-4 py-3 text-blue-400 font-bold">${d.carrier}</td>
+                        <td class="px-4 py-3 text-purple-400 font-bold">${d.tester}</td>
+                        <td class="px-4 py-3 text-slate-400">${d.seq}</td>
+                        <td class="px-4 py-3 text-right text-slate-500 text-[10px] whitespace-nowrap">${d.time}</td>
+                    </tr>`).join('')
+                : '<tr><td colspan="5" class="px-4 py-12 text-center text-slate-500 italic">No records found</td></tr>';
+        }
+
+        function closeParetoModal() {
+            document.getElementById('pareto-modal').classList.add('hidden');
+        }
+        // ── End Pareto Modal ──────────────────────────────────────────
 
         // ── Serial No state ──────────────────────────────────────────
         let rawHeaders = [];        // all headers from file
@@ -745,6 +838,7 @@
             let carrierStats = {};
             let stationStats = {};
             let failReasons = {};
+            let failReasonRows = {};   // title → array of row objects
 
             stationRowCache = {};
 
@@ -765,6 +859,8 @@
                     d.result ? carrierStats[d.carrier].pass++ : carrierStats[d.carrier].fail++;
                     if (!d.result && d.title !== 'N/A') {
                         failReasons[d.title] = (failReasons[d.title] || 0) + 1;
+                        if (!failReasonRows[d.title]) failReasonRows[d.title] = [];
+                        failReasonRows[d.title].push(d);
                     }
                 }
                 if (!stationStats[d.station]) stationStats[d.station] = { pass: 0, fail: 0 };
@@ -779,13 +875,21 @@
 
             // Cache for carrier chart
             lastCarrierStats = carrierStats;
+            lastFailReasonRows = failReasonRows;
             setTimeout(() => renderCarrierChart(), 50);
 
             const sortedReasons = Object.entries(failReasons).sort((a, b) => b[1] - a[1]).slice(0, 5);
-            document.getElementById('pareto-list').innerHTML = sortedReasons.length ? sortedReasons.map(([reason, count]) => `
-                <div onclick="showErrorPopover('${reason.replace(/'/g, "\\'")}')" class="flex justify-between items-center bg-slate-900/50 p-2 rounded-lg border-l-2 border-red-500 cursor-pointer hover:bg-red-500/10 transition-all">
-                    <span class="text-[10px] text-white font-bold truncate max-w-[150px] pointer-events-none">${reason}</span>
-                    <span class="text-[10px] text-red-400 font-black pointer-events-none">${count}</span>
+            lastSortedReasons = sortedReasons;
+            document.getElementById('pareto-list').innerHTML = sortedReasons.length ? sortedReasons.map(([reason, count], idx) => `
+                <div onclick="openParetoModal(${idx})" class="flex justify-between items-center bg-slate-900/50 p-2.5 rounded-xl border border-white/5 border-l-4 border-l-red-500 cursor-pointer hover:bg-red-500/10 hover:border-l-red-400 transition-all group">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="flex-shrink-0 w-5 h-5 rounded-lg bg-red-500/20 text-red-400 text-[9px] font-black flex items-center justify-center">${idx+1}</span>
+                        <span class="text-[10px] text-white font-bold truncate">${reason}</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0 ml-2">
+                        <span class="text-[10px] text-red-400 font-black">${count}</span>
+                        <span class="text-slate-600 group-hover:text-slate-400 text-xs transition-all">›</span>
+                    </div>
                 </div>`).join('') : '<p class="text-[10px] text-slate-500 italic">No failure data</p>';
 
             pieChart.setOption({
@@ -1166,8 +1270,8 @@
 
         function closeModal() { document.getElementById('fail-modal').classList.add('hidden'); }
         function closeStationModal() { document.getElementById('station-modal').classList.add('hidden'); }
-        function showErrorPopover(msg) { document.getElementById('popover-content').innerText = msg; document.getElementById('popover-overlay').classList.add('active'); }
-        function hideErrorPopover() { document.getElementById('popover-overlay').classList.remove('active'); }
+        function showErrorPopover(msg) { /* replaced by openParetoModal */ }
+        function hideErrorPopover() { closeParetoModal(); }
 
         window.addEventListener('resize', () => {
             pieChart.resize();
