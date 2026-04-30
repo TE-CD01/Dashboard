@@ -6,33 +6,191 @@
     <title>Station Analytics Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <!-- Socket.IO — โหลดได้เฉพาะเมื่อรันผ่าน server.py -->
+    <script>
+        // ลอง load socket.io จาก server ก่อน ถ้าไม่ได้ก็ใช้ drag&drop แทน
+        window._isLiveMode = false;
+    </script>
+    <script src="/socket.io/socket.io.js" onerror="console.log('Running in offline mode')"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { background: #0b1120; color: #f1f5f9; font-family: 'Inter', sans-serif; }
-        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
+
+        /* ── CSS Variables (Dark default) ── */
+        :root {
+            --bg:        #0b1120;
+            --bg2:       #0f172a;
+            --surface:   rgba(30,41,59,0.75);
+            --surface2:  rgba(15,23,42,0.8);
+            --border:    rgba(255,255,255,0.10);
+            --border2:   rgba(255,255,255,0.05);
+            --text:      #f1f5f9;
+            --text2:     #94a3b8;
+            --text3:     #64748b;
+            --input-bg:  #0f172a;
+            --input-border: #334155;
+            --scrollbar: #334155;
+            --chart-theme: dark;
+            --hover-row: rgba(59,130,246,0.10);
+            --thead-bg:  #1e293b;
+        }
+        /* ── Light Mode ── warm cream, easy on the eyes ── */
+        html.light {
+            --bg:          #f5f0e8;
+            --bg2:         #ede8df;
+            --surface:     rgba(255,252,245,0.94);
+            --surface2:    rgba(245,240,232,0.97);
+            --border:      rgba(0,0,0,0.10);
+            --border2:     rgba(0,0,0,0.06);
+            --text:        #1a1410;
+            --text2:       #3d3228;
+            --text3:       #6b5e50;
+            --input-bg:    #fdf8f0;
+            --input-border:#c8bfaf;
+            --scrollbar:   #b0a090;
+            --chart-theme: light;
+            --hover-row:   rgba(120,80,40,0.07);
+            --thead-bg:    #ede8df;
+        }
+
+        /* ── Surface backgrounds ── */
+        html.light body                                { background-color: #f5f0e8 !important; }
+        html.light .glass                              { background: rgba(255,252,245,0.94) !important; border-color: rgba(0,0,0,0.10) !important; }
+        html.light .bg-slate-900,
+        html.light [class*="bg-slate-900\/"]           { background-color: #ede8df !important; }
+        html.light .bg-slate-800,
+        html.light [class*="bg-slate-800\/"]           { background-color: #e4ddd3 !important; }
+        html.light .bg-slate-700                       { background-color: #d6cdc2 !important; }
+
+        /* ── Inputs & Selects ── */
+        html.light select                              { background-color: #fdf8f0 !important; color: #1a1410 !important; border-color: #c8bfaf !important; }
+        html.light select option                       { background-color: #fdf8f0 !important; color: #1a1410 !important; }
+        html.light input[type="text"]                  { background-color: #fdf8f0 !important; color: #1a1410 !important; border-color: #c8bfaf !important; }
+        html.light input::placeholder                  { color: #9c8f80 !important; }
+
+        /* ── Borders ── */
+        html.light .border-white\/5                    { border-color: rgba(0,0,0,0.07) !important; }
+        html.light .border-white\/10                   { border-color: rgba(0,0,0,0.10) !important; }
+        html.light .border-slate-700                   { border-color: #c8bfaf !important; }
+        html.light .border-slate-600                   { border-color: #b0a090 !important; }
+
+        /* ── Text — ชัด อ่านง่าย ── */
+        html.light .text-white                         { color: #1a1410 !important; }
+        html.light .text-slate-300                     { color: #3d3228 !important; }
+        html.light .text-slate-400                     { color: #5c5044 !important; }
+        html.light .text-slate-500                     { color: #6b5e50 !important; }
+        html.light .text-slate-600                     { color: #9c8f80 !important; }
+        html.light .font-mono                          { color: #1a1410; }
+
+        /* ── Colored text stays vivid ── */
+        html.light .text-blue-400                      { color: #1d6fad !important; }
+        html.light .text-emerald-400                   { color: #166534 !important; }
+        html.light .text-red-400, html.light .text-red-500 { color: #9b1c1c !important; }
+        html.light .text-purple-400                    { color: #6b21a8 !important; }
+        html.light .text-violet-400, html.light .text-violet-300 { color: #5b21b6 !important; }
+        html.light .text-emerald-500                   { color: #15803d !important; }
+        html.light .text-blue-500                      { color: #1d4ed8 !important; }
+        html.light .text-amber-300, html.light .text-amber-400 { color: #92400e !important; }
+
+        /* ── Badges — สีสด ── */
+        html.light .sn-badge                           { background: rgba(109,40,217,0.12) !important; color: #5b21b6 !important; border-color: rgba(109,40,217,0.30) !important; }
+        html.light .tag-badge                          { filter: saturate(1.4) brightness(0.85); }
+
+        /* ── Stat card backgrounds ── */
+        html.light .bg-emerald-500\/5                  { background-color: rgba(22,163,74,0.10)  !important; }
+        html.light .bg-emerald-500\/10                 { background-color: rgba(22,163,74,0.12)  !important; }
+        html.light .bg-red-500\/5                      { background-color: rgba(220,38,38,0.08)  !important; }
+        html.light .bg-red-500\/10                     { background-color: rgba(220,38,38,0.10)  !important; }
+        html.light .bg-blue-500\/5                     { background-color: rgba(29,100,173,0.08) !important; }
+        html.light .bg-blue-500\/10                    { background-color: rgba(29,100,173,0.10) !important; }
+        html.light .bg-violet-500\/10                  { background-color: rgba(109,40,217,0.09) !important; }
+        html.light .bg-emerald-500\/20,
+        html.light .border-emerald-500\/20             { background-color: rgba(22,163,74,0.14)  !important; border-color: rgba(22,163,74,0.35) !important; }
+        html.light .bg-red-500\/20,
+        html.light .border-red-500\/20                 { background-color: rgba(220,38,38,0.12)  !important; border-color: rgba(220,38,38,0.35) !important; }
+
+        /* ── KPI numbers ── */
+        html.light #total-count-text                   { color: #1a1410 !important; }
+        html.light #total-pass-text                    { color: #14532d !important; }
+        html.light #total-fail-text                    { color: #7f1d1d !important; }
+        html.light #display-yield                      { color: #1e3a8a !important; }
+
+        /* ── Table ── */
+        html.light thead th                            { background-color: #e4ddd3 !important; color: #5c5044 !important; }
+        html.light .clickable-row:hover                { background: rgba(120,80,40,0.06) !important; }
+        html.light tbody tr:hover td                   { background: rgba(120,80,40,0.04); }
+
+        /* ── Pass/Fail status badges in tables ── */
+        html.light .bg-emerald-500\/20.text-emerald-400 { color: #14532d !important; }
+        html.light .bg-red-500\/20.text-red-400         { color: #7f1d1d !important; }
+
+        /* ── Tab groups ── */
+        html.light div.flex.bg-slate-900               { background-color: #e4ddd3 !important; }
+
+        /* ── Pareto ── */
+        html.light .bg-slate-900\/50.rounded-xl,
+        html.light .bg-slate-900\/50                   { background-color: rgba(228,221,211,0.85) !important; }
+
+        /* ── Drop zone ── */
+        html.light #drop-zone                          { border-color: #b0a090 !important; background: rgba(245,240,232,0.5); }
+        html.light #drop-zone:hover                    { border-color: #1d6fad !important; background-color: rgba(29,111,173,0.05) !important; }
+        html.light #drop-text                          { color: #6b5e50 !important; }
+
+        /* ── Misc UI ── */
+        html.light #theme-btn                          { background-color: #e4ddd3 !important; border-color: #c8bfaf !important; color: #3d3228 !important; }
+        html.light #last-update-badge                  { background-color: #e4ddd3 !important; border-color: #c8bfaf !important; color: #5c5044 !important; }
+        html.light ::-webkit-scrollbar-thumb           { background: #b0a090; }
+
+        /* ── Pill badges in station/pareto modals ── */
+        html.light .bg-blue-500\/15.text-blue-300      { background-color: rgba(29,111,173,0.13) !important; color: #1d4fad !important; border-color: rgba(29,111,173,0.30) !important; }
+
+        /* ── Column chip tags ── */
+        html.light .border-slate-700.bg-slate-800      { background-color: #ede8df !important; border-color: #c8bfaf !important; color: #5c5044 !important; }
+
+        /* ── Station overview left panel ── */
+        html.light .bg-slate-900\/30                   { background-color: rgba(228,221,211,0.5) !important; }
+        html.light .bg-slate-900\/20                   { background-color: rgba(228,221,211,0.4) !important; }
+
+        /* ── Search highlight ── */
+        html.light mark                                 { background: #fbbf24 !important; color: #1a1410 !important; }
+
+        body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; transition: background 0.3s, color 0.3s; }
+
+        .glass {
+            background: var(--surface);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+        }
         .tab-active { color: #3b82f6; border-bottom: 3px solid #3b82f6; font-weight: 900; }
+
         ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 10px; }
+
         .station-card { transition: all 0.2s ease-in-out; }
         .station-card:hover { transform: translateY(-4px); }
-        select option { background: #1e293b; color: white; }
-        .clickable-row:hover { background: rgba(59, 130, 246, 0.1); cursor: pointer; }
 
-        #popover-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 100; opacity: 0; transition: opacity 0.2s ease; }
-        #error-popover { transform: scale(0.9); transition: transform 0.2s ease; }
-        #popover-overlay.active { display: flex; opacity: 1; }
-        #popover-overlay.active #error-popover { transform: scale(1); }
+        select, select option { background: var(--input-bg); color: var(--text); }
+        input[type="text"] { background: var(--input-bg); color: var(--text); }
+
+        .clickable-row:hover { background: var(--hover-row); cursor: pointer; }
+        thead th { background: var(--thead-bg) !important; color: var(--text3) !important; }
+
         .stat-btn { transition: all 0.15s ease; cursor: pointer; }
-        .stat-btn:hover { filter: brightness(1.2); transform: scale(1.05); }
+        .stat-btn:hover { filter: brightness(1.1); transform: scale(1.05); }
         .stat-btn:active { transform: scale(0.97); }
         .mini-chart { width: 100%; height: 80px; }
 
-        /* Column Mapper Modal */
         #col-mapper-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; z-index: 200; }
         #col-mapper-overlay.active { display: flex; }
 
-        /* Serial badge pill */
         .sn-badge { display: inline-block; background: rgba(139,92,246,0.2); color: #a78bfa; border: 1px solid rgba(139,92,246,0.4); border-radius: 6px; font-size: 9px; font-weight: 900; letter-spacing: 0.08em; padding: 1px 6px; text-transform: uppercase; vertical-align: middle; margin-left: 4px; white-space: nowrap; }
+
+        .live-dot { width:8px; height:8px; border-radius:50%; background:#22c55e; display:inline-block; animation: livepulse 1.4s ease-in-out infinite; }
+        @keyframes livepulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.8)} }
+        #live-banner { transition: all 0.3s; }
+
+        /* Theme toggle button */
+        #theme-btn { transition: all 0.2s; }
+        #theme-btn:hover { transform: scale(1.1); }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -103,7 +261,7 @@
             <!-- Table -->
             <div class="flex-1 overflow-auto">
                 <table class="w-full text-left text-xs font-mono">
-                    <thead class="sticky top-0 bg-slate-800 text-[10px] text-slate-500 uppercase font-black tracking-widest z-10">
+                    <thead id="pareto-modal-thead" class="sticky top-0 bg-slate-800 text-[10px] text-slate-500 uppercase font-black tracking-widest z-10">
                         <tr>
                             <th class="px-4 py-3">Station</th>
                             <th class="px-4 py-3">Carrier ID</th>
@@ -258,7 +416,24 @@
                 <h1 class="text-3xl font-black text-white uppercase italic tracking-tighter">Station<span class="text-blue-500">Live</span></h1>
                 <p class="text-slate-400 text-[10px] uppercase tracking-widest font-bold">Performance Tracking System</p>
             </div>
-            <div class="flex items-center gap-3 w-full md:w-auto">
+            <div class="flex items-center gap-3 w-full md:w-auto flex-wrap justify-end">
+
+                <!-- Theme Toggle -->
+                <button id="theme-btn" onclick="toggleTheme()" title="สลับธีม"
+                    class="w-10 h-10 rounded-xl border border-white/10 bg-slate-800/60 flex items-center justify-center text-lg hover:bg-slate-700/60 transition-all">
+                    🌙
+                </button>
+
+                <!-- Live Mode Badge (shown when server connected) -->
+                <div id="live-banner" class="hidden items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+                    <span class="live-dot"></span>
+                    <span class="text-[10px] text-emerald-400 font-black uppercase tracking-widest">Live</span>
+                    <span id="live-filename" class="text-[9px] text-emerald-300/60 font-bold max-w-[160px] truncate"></span>
+                </div>
+
+                <!-- Last updated -->
+                <div id="last-update-badge" class="hidden px-3 py-1 rounded-lg bg-slate-800 border border-white/10 text-[9px] text-slate-400 font-black uppercase tracking-widest whitespace-nowrap"></div>
+
                 <!-- Serial No Tag Button -->
                 <button id="sn-tag-btn" onclick="openColMapper()" class="hidden px-4 py-2 rounded-xl border border-violet-500/50 bg-violet-500/10 text-violet-400 text-[10px] font-black uppercase tracking-widest hover:bg-violet-500/20 transition-all whitespace-nowrap">
                     🏷 Tag Serial No
@@ -266,9 +441,12 @@
                 <!-- Serial No active indicator -->
                 <div id="sn-active-badge" class="hidden px-3 py-1 rounded-lg bg-violet-500/20 border border-violet-500/40 text-violet-300 text-[9px] font-black uppercase tracking-widest whitespace-nowrap"></div>
 
-                <div id="drop-zone" class="w-full md:w-80 h-16 border-2 border-dashed border-slate-700 rounded-2xl flex items-center justify-center hover:border-blue-500 hover:bg-blue-500/5 cursor-pointer transition-all">
-                    <span id="drop-text" class="text-slate-400 text-sm font-bold uppercase tracking-widest">Drop Log File Here</span>
-                    <input type="file" id="file-input" class="hidden" accept=".csv,.txt">
+                <!-- Drop zone (shown only in offline mode) -->
+                <div id="drop-zone-wrap" class="">
+                    <div id="drop-zone" class="w-full md:w-72 h-16 border-2 border-dashed border-slate-700 rounded-2xl flex items-center justify-center hover:border-blue-500 hover:bg-blue-500/5 cursor-pointer transition-all">
+                        <span id="drop-text" class="text-slate-400 text-sm font-bold uppercase tracking-widest">Drop Log File Here</span>
+                        <input type="file" id="file-input" class="hidden" accept=".csv,.txt">
+                    </div>
                 </div>
             </div>
         </div>
@@ -292,7 +470,7 @@
             </div>
             <div class="glass p-4 rounded-2xl border-t border-white/10 flex flex-col justify-center">
                 <p class="text-[9px] text-slate-500 uppercase font-black tracking-widest">Grand Total</p>
-                <p id="total-count-text" class="text-xl font-black text-white font-mono">0</p>
+                <p id="total-count-text" class="text-xl font-black font-mono" style="color:var(--text)">0</p>
             </div>
             <div class="glass p-4 rounded-2xl border-t border-emerald-500/50 flex flex-col justify-center bg-emerald-500/5">
                 <p class="text-[9px] text-emerald-500 uppercase font-black tracking-widest">Total Pass</p>
@@ -311,7 +489,8 @@
         <!-- Tabs -->
         <div class="flex gap-8 border-b border-white/5 mb-6 px-2 font-black uppercase tracking-widest">
             <button onclick="switchTab('overview')" id="tab-overview" class="pb-3 text-sm tab-active tracking-[0.2em]">Overview</button>
-            <button onclick="switchTab('carrier')" id="tab-carrier" class="pb-3 text-sm text-slate-400 tracking-[0.2em]">Carriers</button>
+            <button onclick="switchTab('carrier')"  id="tab-carrier"  class="pb-3 text-sm text-slate-400 tracking-[0.2em]">Carriers</button>
+            <button onclick="switchTab('search')"   id="tab-search"   class="pb-3 text-sm text-slate-400 tracking-[0.2em]">🔍 Search</button>
         </div>
 
         <!-- Overview Tab -->
@@ -406,7 +585,52 @@
                 </div>
             </div>
         </div>
-    </div>
+
+        <!-- Search Tab -->
+        <div id="view-search" class="hidden space-y-4 pb-10">
+
+            <!-- Search bar + mode selector -->
+            <div class="glass p-5 rounded-2xl border-t-4 border-blue-500">
+                <p class="text-[9px] text-blue-400 font-black uppercase tracking-widest mb-3">ค้นหาข้อมูลจาก Log</p>
+                <div class="flex flex-col md:flex-row gap-3">
+                    <!-- Mode buttons -->
+                    <div class="flex bg-slate-900 p-1 rounded-xl border border-white/10 gap-1 flex-shrink-0">
+                        <button onclick="setSearchMode('serial')"  id="srch-btn-serial"  class="px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all bg-violet-500 text-white">Serial No</button>
+                        <button onclick="setSearchMode('tester')"  id="srch-btn-tester"  class="px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">Tester ID</button>
+                        <button onclick="setSearchMode('carrier')" id="srch-btn-carrier" class="px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">Carrier ID</button>
+                        <button onclick="setSearchMode('all')"     id="srch-btn-all"     class="px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">All Fields</button>
+                    </div>
+                    <!-- Input -->
+                    <input type="text" id="search-input" oninput="runSearch()"
+                        placeholder="พิมพ์เพื่อค้นหา..."
+                        class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm font-black outline-none focus:border-blue-500 transition-all">
+                    <!-- Result count -->
+                    <div id="search-result-count" class="flex-shrink-0 flex items-center gap-2 px-4 py-2 glass rounded-xl border border-white/10 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
+                        รอการค้นหา
+                    </div>
+                </div>
+                <!-- Hint -->
+                <p id="search-hint" class="mt-2 text-[9px] text-slate-500 font-bold"></p>
+            </div>
+
+            <!-- Results table -->
+            <div id="search-results-wrap" class="glass rounded-2xl overflow-hidden hidden">
+                <div class="overflow-auto max-h-[600px]">
+                    <table class="w-full text-left text-xs font-mono">
+                        <thead id="search-results-thead" class="sticky top-0 bg-slate-800 text-[10px] text-slate-500 uppercase font-black tracking-widest z-10"></thead>
+                        <tbody id="search-results-body" class="text-slate-300"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Empty state -->
+            <div id="search-empty" class="hidden text-center py-20 text-slate-500">
+                <p class="text-5xl mb-4">🔍</p>
+                <p class="font-black uppercase tracking-widest text-sm">ไม่พบข้อมูล</p>
+                <p class="text-xs mt-1">ลองเปลี่ยน keyword หรือ mode การค้นหา</p>
+            </div>
+        </div>
+    </div><!-- /max-w -->
 
     <script>
         let rawData = [];
@@ -416,7 +640,9 @@
         let currentStationModalRows = [];
         let currentSortMode = 'fail';
         let miniChartInstances = {};
-        let pieChart = echarts.init(document.getElementById('pie-chart'), 'dark');
+        let currentTheme = 'dark';
+        let pieChart = echarts.init(document.getElementById('pie-chart'), currentTheme);
+        pieChart.setOption({ backgroundColor: 'transparent' });
         let carrierChart = null;
         let carrierChartMode = 'fail';
         let lastCarrierStats = {};
@@ -464,6 +690,19 @@
         }
 
         function renderParetoTable(rows) {
+            const snCol = hasSN();
+            const colspan = snCol ? 6 : 5;
+
+            // Sync header
+            document.getElementById('pareto-modal-thead').innerHTML = `<tr>
+                <th class="px-4 py-3">Station</th>
+                <th class="px-4 py-3">Carrier ID</th>
+                ${snCol ? `<th class="px-4 py-3 text-violet-400">${snColName}</th>` : ''}
+                <th class="px-4 py-3">Tester ID</th>
+                <th class="px-4 py-3">Seq</th>
+                <th class="px-4 py-3 text-right">Timestamp</th>
+            </tr>`;
+
             document.getElementById('pareto-modal-count').innerText = `${rows.length.toLocaleString()} records`;
             document.getElementById('pareto-modal-body').innerHTML = rows.length
                 ? rows.map(d => `
@@ -472,11 +711,12 @@
                             <span class="inline-block bg-blue-500/15 text-blue-300 border border-blue-500/25 rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider whitespace-nowrap">${d.station}</span>
                         </td>
                         <td class="px-4 py-3 text-blue-400 font-bold">${d.carrier}</td>
+                        ${snCol ? `<td class="px-4 py-3">${snCell(d.sn)}</td>` : ''}
                         <td class="px-4 py-3 text-purple-400 font-bold">${d.tester}</td>
                         <td class="px-4 py-3 text-slate-400">${d.seq}</td>
                         <td class="px-4 py-3 text-right text-slate-500 text-[10px] whitespace-nowrap">${d.time}</td>
                     </tr>`).join('')
-                : '<tr><td colspan="5" class="px-4 py-12 text-center text-slate-500 italic">No records found</td></tr>';
+                : `<tr><td colspan="${colspan}" class="px-4 py-12 text-center text-slate-500 italic">No records found</td></tr>`;
         }
 
         function closeParetoModal() {
@@ -600,12 +840,14 @@
         }
 
         function switchTab(tab) {
-            document.getElementById('view-overview').classList.toggle('hidden', tab !== 'overview');
-            document.getElementById('view-carrier').classList.toggle('hidden', tab !== 'carrier');
-            document.getElementById('tab-overview').className = tab === 'overview' ? 'pb-3 text-sm tab-active' : 'pb-3 text-sm text-slate-400';
-            document.getElementById('tab-carrier').className = tab === 'carrier' ? 'pb-3 text-sm tab-active' : 'pb-3 text-sm text-slate-400';
+            ['overview','carrier','search'].forEach(t => {
+                document.getElementById(`view-${t}`).classList.toggle('hidden', t !== tab);
+                const btn = document.getElementById(`tab-${t}`);
+                btn.className = t === tab ? 'pb-3 text-sm tab-active tracking-[0.2em]' : 'pb-3 text-sm text-slate-400 tracking-[0.2em]';
+            });
             if (tab === 'overview') setTimeout(() => { pieChart.resize(); }, 50);
-            if (tab === 'carrier') setTimeout(() => { renderCarrierChart(); }, 50);
+            if (tab === 'carrier')  setTimeout(() => { renderCarrierChart(); }, 50);
+            if (tab === 'search')   setTimeout(() => { document.getElementById('search-input').focus(); }, 50);
         }
 
         function getWeekNumber(d) {
@@ -705,6 +947,122 @@
             reader.readAsText(file);
         }
 
+        // ── Search Tab ────────────────────────────────────────────────
+        let searchMode = 'serial';
+
+        function setSearchMode(mode) {
+            searchMode = mode;
+            const colors = { serial:'violet', tester:'sky', carrier:'blue', all:'slate' };
+            const activeCls = {
+                violet: 'bg-violet-500 text-white',
+                sky:    'bg-sky-500 text-white',
+                blue:   'bg-blue-500 text-white',
+                slate:  'bg-slate-500 text-white',
+            };
+            ['serial','tester','carrier','all'].forEach(m => {
+                const btn = document.getElementById(`srch-btn-${m}`);
+                btn.className = `px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${m === mode ? activeCls[colors[m]] : 'text-slate-400 hover:text-white'}`;
+            });
+            const hints = {
+                serial:  hasSN() ? `ค้นหาจาก Serial No — column: "${snColName}"` : 'กรุณา Tag Serial No column ก่อน (ปุ่ม 🏷 Tag Serial No)',
+                tester:  'ค้นหาจาก Tester ID เช่น PC-01, TESTER-A',
+                carrier: 'ค้นหาจาก Carrier ID / RFID / Tray ID',
+                all:     'ค้นหาจากทุก field — Serial No, Tester, Carrier, Station, Error Title',
+            };
+            document.getElementById('search-hint').innerText = hints[mode];
+            runSearch();
+        }
+
+        function runSearch() {
+            const q = document.getElementById('search-input').value.trim().toUpperCase();
+            const countEl  = document.getElementById('search-result-count');
+            const wrap     = document.getElementById('search-results-wrap');
+            const emptyEl  = document.getElementById('search-empty');
+
+            if (!q) {
+                countEl.innerText = 'รอการค้นหา';
+                wrap.classList.add('hidden');
+                emptyEl.classList.add('hidden');
+                return;
+            }
+            if (!rawData.length) {
+                countEl.innerText = 'ยังไม่มีข้อมูล';
+                wrap.classList.add('hidden');
+                emptyEl.classList.add('hidden');
+                return;
+            }
+
+            const results = rawData.filter(r => {
+                switch (searchMode) {
+                    case 'serial':  return hasSN() && (r.sn || '').toUpperCase().includes(q);
+                    case 'tester':  return r.tester.toUpperCase().includes(q);
+                    case 'carrier': return r.carrier.toUpperCase().includes(q);
+                    case 'all':
+                    default:
+                        return r.carrier.toUpperCase().includes(q) ||
+                               r.tester.toUpperCase().includes(q)  ||
+                               r.station.toUpperCase().includes(q) ||
+                               r.title.toUpperCase().includes(q)   ||
+                               (hasSN() && (r.sn || '').toUpperCase().includes(q));
+                }
+            });
+
+            countEl.innerText = `${results.length.toLocaleString()} รายการ`;
+
+            if (!results.length) {
+                wrap.classList.add('hidden');
+                emptyEl.classList.remove('hidden');
+                return;
+            }
+            emptyEl.classList.add('hidden');
+            wrap.classList.remove('hidden');
+            renderSearchResults(results, q);
+        }
+
+        function renderSearchResults(rows, q) {
+            const snCol = hasSN();
+
+            // Build thead
+            document.getElementById('search-results-thead').innerHTML = `<tr>
+                <th class="px-4 py-3 w-20">Result</th>
+                <th class="px-4 py-3">Station</th>
+                <th class="px-4 py-3">Carrier ID</th>
+                ${snCol ? `<th class="px-4 py-3 text-violet-400">${snColName}</th>` : ''}
+                <th class="px-4 py-3">Tester ID</th>
+                <th class="px-4 py-3">Seq</th>
+                <th class="px-4 py-3">Title / Error</th>
+                <th class="px-4 py-3 text-right whitespace-nowrap">Timestamp</th>
+            </tr>`;
+
+            // Highlight matching text
+            function hl(text) {
+                if (!text) return '—';
+                const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                return String(text).replace(new RegExp(escaped, 'gi'),
+                    m => `<mark style="background:#fbbf24;color:#0f172a;border-radius:3px;padding:0 2px">${m}</mark>`);
+            }
+
+            document.getElementById('search-results-body').innerHTML = rows.map(d => `
+                <tr class="border-b border-white/5 hover:bg-blue-500/5 transition-colors">
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-0.5 rounded text-[9px] font-black uppercase ${d.result ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}">${d.result ? 'PASS' : 'FAIL'}</span>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="inline-block bg-blue-500/15 text-blue-300 border border-blue-500/25 rounded-lg px-2 py-0.5 text-[10px] font-black uppercase">${hl(d.station)}</span>
+                    </td>
+                    <td class="px-4 py-3 text-blue-400 font-bold">${hl(d.carrier)}</td>
+                    ${snCol ? `<td class="px-4 py-3"><span class="sn-badge">${hl(d.sn)}</span></td>` : ''}
+                    <td class="px-4 py-3 text-purple-400 font-bold">${hl(d.tester)}</td>
+                    <td class="px-4 py-3 text-slate-400">${d.seq}</td>
+                    <td class="px-4 py-3 max-w-[200px] truncate ${!d.result ? 'text-red-300' : ''}" title="${d.title}">${hl(d.title)}</td>
+                    <td class="px-4 py-3 text-right text-slate-500 text-[10px] whitespace-nowrap">${d.time}</td>
+                </tr>`).join('');
+        }
+
+        // Init search hint on load
+        setTimeout(() => setSearchMode('serial'), 100);
+        // ── End Search Tab ────────────────────────────────────────────
+
         function updateTimeOptions() {
             const type = document.getElementById('time-type').value;
             const container = document.getElementById('time-val-container');
@@ -740,7 +1098,31 @@
             return { labels: keys, passData: keys.map(k => buckets[k].pass), failData: keys.map(k => buckets[k].fail) };
         }
 
-        function renderMiniChart(containerId, stationName, passRows, failRows) {
+        // ── Theme-aware chart color helpers ───────────────────────────
+        function C() {
+            const L = currentTheme === 'light';
+            return {
+                axisLabel:   L ? '#5c5044' : '#64748b',
+                axisLine:    L ? '#c8bfaf' : '#334155',
+                splitLine:   L ? 'rgba(0,0,0,0.07)' : '#1e293b',
+                tooltipBg:   L ? '#fff8f0' : '#1e293b',
+                tooltipBd:   L ? '#c8bfaf' : '#334155',
+                tooltipText: L ? '#1a1410' : '#f1f5f9',
+                tooltipSub:  L ? '#6b5e50' : '#94a3b8',
+                legendText:  L ? '#5c5044' : '#94a3b8',
+                passTop:     L ? '#16a34a' : '#4ade80',
+                passBot:     L ? '#14532d' : '#16a34a',
+                failTop:     L ? '#dc2626' : '#f87171',
+                failBot:     L ? '#7f1d1d' : '#b91c1c',
+                passLabel:   L ? '#14532d' : '#4ade80',
+                failLabel:   L ? '#991b1b' : '#f87171',
+                passEmph:    L ? '#22c55e' : '#86efac',
+                failEmph:    L ? '#f87171' : '#fca5a5',
+            };
+        }
+        // ─────────────────────────────────────────────────────────────
+
+        function renderMiniChart(containerId, passRows, failRows) {
             const el = document.getElementById(containerId);
             if (!el) return;
             if (miniChartInstances[containerId]) { miniChartInstances[containerId].dispose(); }
@@ -748,31 +1130,49 @@
             if (allRows.length === 0) return;
             const trend = buildStationTrend(allRows);
             if (trend.labels.length === 0) return;
-            const chart = echarts.init(el, 'dark');
+            const chart = echarts.init(el, currentTheme);
             miniChartInstances[containerId] = chart;
             const allValues = [...trend.passData, ...trend.failData];
             const maxVal = Math.max(...allValues, 1);
+            const c = C();
             chart.setOption({
                 backgroundColor: 'transparent',
                 grid: { top: 10, bottom: 20, left: 4, right: 4, containLabel: true },
                 tooltip: {
                     trigger: 'axis', axisPointer: { type: 'shadow' },
-                    textStyle: { fontSize: 10, fontWeight: 'bold' },
-                    backgroundColor: '#1e293b', borderColor: '#334155',
+                    textStyle: { fontSize: 10, fontWeight: 'bold', color: c.tooltipText },
+                    backgroundColor: c.tooltipBg, borderColor: c.tooltipBd,
                     formatter: (params) => {
-                        let s = `<div style="font-size:10px;font-weight:900;color:#94a3b8;margin-bottom:4px">${params[0].axisValue}</div>`;
+                        let s = `<div style="font-size:10px;font-weight:900;color:${c.tooltipSub};margin-bottom:4px">${params[0].axisValue}</div>`;
                         params.forEach(p => {
-                            const color = p.seriesName === 'Pass' ? '#22c55e' : '#ef4444';
-                            s += `<div style="display:flex;justify-content:space-between;gap:16px"><span style="color:${color};font-weight:900">${p.seriesName}</span><span style="color:#fff;font-weight:900;font-family:monospace">${p.value.toLocaleString()}</span></div>`;
+                            const col = p.seriesName === 'Pass' ? '#22c55e' : '#ef4444';
+                            s += `<div style="display:flex;justify-content:space-between;gap:16px"><span style="color:${col};font-weight:900">${p.seriesName}</span><span style="color:${c.tooltipText};font-weight:900;font-family:monospace">${p.value.toLocaleString()}</span></div>`;
                         });
                         return s;
                     }
                 },
-                xAxis: { type: 'category', data: trend.labels, axisLabel: { color: '#64748b', fontSize: 8, rotate: trend.labels.length > 4 ? 30 : 0 }, axisLine: { lineStyle: { color: '#334155' } }, axisTick: { show: false }, splitLine: { show: false } },
-                yAxis: { type: 'value', min: 0, max: Math.ceil(maxVal * 1.15), axisLabel: { color: '#64748b', fontSize: 8, formatter: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } } },
+                xAxis: { type: 'category', data: trend.labels,
+                    axisLabel: { color: c.axisLabel, fontSize: 8, rotate: trend.labels.length > 4 ? 30 : 0 },
+                    axisLine: { lineStyle: { color: c.axisLine } }, axisTick: { show: false }, splitLine: { show: false }
+                },
+                yAxis: { type: 'value', min: 0, max: Math.ceil(maxVal * 1.15),
+                    axisLabel: { color: c.axisLabel, fontSize: 8, formatter: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v },
+                    axisLine: { show: false }, axisTick: { show: false },
+                    splitLine: { lineStyle: { color: c.splitLine, type: 'dashed' } }
+                },
                 series: [
-                    { name: 'Pass', type: 'bar', data: trend.passData, itemStyle: { color: { type:'linear',x:0,y:0,x2:0,y2:1, colorStops:[{offset:0,color:'#4ade80'},{offset:1,color:'#16a34a'}] }, borderRadius:[4,4,0,0] }, barGap:'10%', barCategoryGap:'30%', label: { show: trend.labels.length <= 7, position:'top', fontSize:8, fontWeight:900, color:'#4ade80', formatter: p => p.value > 0 ? p.value.toLocaleString() : '' }, emphasis: { itemStyle: { color:'#86efac' } } },
-                    { name: 'Fail', type: 'bar', data: trend.failData, itemStyle: { color: { type:'linear',x:0,y:0,x2:0,y2:1, colorStops:[{offset:0,color:'#f87171'},{offset:1,color:'#b91c1c'}] }, borderRadius:[4,4,0,0] }, barGap:'10%', barCategoryGap:'30%', label: { show: trend.labels.length <= 7, position:'top', fontSize:8, fontWeight:900, color:'#f87171', formatter: p => p.value > 0 ? p.value.toLocaleString() : '' }, emphasis: { itemStyle: { color:'#fca5a5' } } }
+                    { name: 'Pass', type: 'bar', data: trend.passData,
+                        itemStyle: { color: { type:'linear',x:0,y:0,x2:0,y2:1, colorStops:[{offset:0,color:c.passTop},{offset:1,color:c.passBot}] }, borderRadius:[4,4,0,0] },
+                        barGap:'10%', barCategoryGap:'30%',
+                        label: { show: trend.labels.length <= 7, position:'top', fontSize:8, fontWeight:900, color:c.passLabel, formatter: p => p.value > 0 ? p.value.toLocaleString() : '' },
+                        emphasis: { itemStyle: { color: c.passEmph } }
+                    },
+                    { name: 'Fail', type: 'bar', data: trend.failData,
+                        itemStyle: { color: { type:'linear',x:0,y:0,x2:0,y2:1, colorStops:[{offset:0,color:c.failTop},{offset:1,color:c.failBot}] }, borderRadius:[4,4,0,0] },
+                        barGap:'10%', barCategoryGap:'30%',
+                        label: { show: trend.labels.length <= 7, position:'top', fontSize:8, fontWeight:900, color:c.failLabel, formatter: p => p.value > 0 ? p.value.toLocaleString() : '' },
+                        emphasis: { itemStyle: { color: c.failEmph } }
+                    }
                 ]
             });
         }
@@ -892,8 +1292,26 @@
                     </div>
                 </div>`).join('') : '<p class="text-[10px] text-slate-500 italic">No failure data</p>';
 
+            const isLight = currentTheme === 'light';
+            const labelColor = isLight ? '#0f172a' : '#ffffff';
+            const subColor   = isLight ? '#64748b' : '#94a3b8';
+            const gapColor   = isLight ? '#f0f4f8' : '#0b1120';
             pieChart.setOption({
-                series: [{ type: 'pie', radius: ['60%', '80%'], itemStyle: { borderRadius: 10, borderColor: '#0b1120', borderWidth: 5 }, label: { show: true, position: 'center', formatter: '{v|' + total.toLocaleString() + '}\n{t|TOTAL}', rich: { v: { fontSize: 32, fontWeight: 900, color: '#fff' }, t: { fontSize: 12, color: '#64748b', fontWeight: 'bold' } } }, data: [{ value: pass, name: 'PASS', itemStyle: { color: '#22c55e' } }, { value: fail, name: 'FAIL', itemStyle: { color: '#ef4444' } }] }]
+                backgroundColor: 'transparent',
+                series: [{ type: 'pie', radius: ['60%', '80%'],
+                    itemStyle: { borderRadius: 10, borderColor: gapColor, borderWidth: 5 },
+                    label: { show: true, position: 'center',
+                        formatter: '{v|' + total.toLocaleString() + '}\n{t|TOTAL}',
+                        rich: {
+                            v: { fontSize: 32, fontWeight: 900, color: labelColor },
+                            t: { fontSize: 12, color: subColor, fontWeight: 'bold' }
+                        }
+                    },
+                    data: [
+                        { value: pass, name: 'PASS', itemStyle: { color: '#22c55e' } },
+                        { value: fail, name: 'FAIL', itemStyle: { color: '#ef4444' } }
+                    ]
+                }]
             });
 
             Object.values(miniChartInstances).forEach(c => { try { c.dispose(); } catch(e) {} });
@@ -939,13 +1357,22 @@
                     </div>`;
             }).join('');
 
-            setTimeout(() => {
-                stationsToShow.forEach(s => {
-                    const cache = stationRowCache[s] || { pass: [], fail: [] };
-                    const chartId = `mini-chart-${s.replace(/[^a-zA-Z0-9]/g, '_')}`;
-                    renderMiniChart(chartId, s, cache.pass, cache.fail);
-                });
-            }, 50);
+            // Render mini charts — use rAF to ensure DOM has painted and elements have size
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                    stationsToShow.forEach(s => {
+                        const cache = stationRowCache[s] || { pass: [], fail: [] };
+                        const chartId = `mini-chart-${s.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                        const el = document.getElementById(chartId);
+                        if (el && el.offsetWidth > 0) {
+                            renderMiniChart(chartId, cache.pass, cache.fail);
+                        } else if (el) {
+                            // Element exists but no size yet — retry once more
+                            setTimeout(() => renderMiniChart(chartId, cache.pass, cache.fail), 200);
+                        }
+                    });
+                }, 30);
+            });
 
             // Carrier table — include SN column
             const sortedCarriers = Object.entries(carrierStats)
@@ -993,7 +1420,12 @@
         function renderCarrierChart() {
             const el = document.getElementById('carrier-chart');
             if (!el) return;
-            if (carrierChart) { try { carrierChart.dispose(); } catch(e) {} }
+            // Wait for element to have width (may be in hidden tab)
+            if (el.offsetWidth === 0) {
+                setTimeout(renderCarrierChart, 100);
+                return;
+            }
+            if (carrierChart) { try { carrierChart.dispose(); } catch(e) {} carrierChart = null; }
 
             const topN = parseInt(document.getElementById('carrier-chart-topn').value) || 10;
             const entries = Object.entries(lastCarrierStats);
@@ -1026,65 +1458,66 @@
             const chartH = Math.max(380, sorted.length * (barH + 10) + 80);
             el.style.height = chartH + 'px';
 
-            carrierChart = echarts.init(el, 'dark');
+            carrierChart = echarts.init(el, currentTheme);
+            const c = C();
             carrierChart.setOption({
                 backgroundColor: 'transparent',
                 grid: { top: 16, bottom: 20, left: 16, right: 80, containLabel: true },
                 legend: {
                     top: 0, right: 80,
                     data: ['Pass', 'Fail'],
-                    textStyle: { color: '#94a3b8', fontSize: 10, fontWeight: 900 },
+                    textStyle: { color: c.legendText, fontSize: 10, fontWeight: 900 },
                     icon: 'roundRect', itemWidth: 12, itemHeight: 8
                 },
                 tooltip: {
                     trigger: 'axis', axisPointer: { type: 'shadow' },
-                    backgroundColor: '#1e293b', borderColor: '#334155',
-                    textStyle: { fontSize: 11, fontWeight: 'bold' },
+                    backgroundColor: c.tooltipBg, borderColor: c.tooltipBd,
+                    textStyle: { fontSize: 11, fontWeight: 'bold', color: c.tooltipText },
                     formatter: params => {
                         const carrierId = params[0].axisValue;
                         const stat = lastCarrierStats[carrierId] || {};
                         const t = (stat.pass||0) + (stat.fail||0);
                         const yld = t ? ((stat.pass||0) / t * 100).toFixed(1) : '0.0';
-                        let s = `<div style="font-size:11px;font-weight:900;color:#e2e8f0;margin-bottom:6px;max-width:220px;word-break:break-all">${carrierId}</div>`;
-                        s += `<div style="display:flex;justify-content:space-between;gap:24px"><span style="color:#4ade80;font-weight:900">Pass</span><span style="color:#fff;font-weight:900;font-family:monospace">${(stat.pass||0).toLocaleString()}</span></div>`;
-                        s += `<div style="display:flex;justify-content:space-between;gap:24px"><span style="color:#f87171;font-weight:900">Fail</span><span style="color:#fff;font-weight:900;font-family:monospace">${(stat.fail||0).toLocaleString()}</span></div>`;
-                        s += `<div style="border-top:1px solid #334155;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;gap:24px"><span style="color:#94a3b8;font-weight:900">Total</span><span style="color:#fff;font-weight:900;font-family:monospace">${t.toLocaleString()}</span></div>`;
-                        s += `<div style="display:flex;justify-content:space-between;gap:24px"><span style="color:#60a5fa;font-weight:900">Yield</span><span style="color:#60a5fa;font-weight:900;font-family:monospace">${yld}%</span></div>`;
+                        let s = `<div style="font-size:11px;font-weight:900;color:${c.tooltipText};margin-bottom:6px;max-width:220px;word-break:break-all">${carrierId}</div>`;
+                        s += `<div style="display:flex;justify-content:space-between;gap:24px"><span style="color:#16a34a;font-weight:900">Pass</span><span style="color:${c.tooltipText};font-weight:900;font-family:monospace">${(stat.pass||0).toLocaleString()}</span></div>`;
+                        s += `<div style="display:flex;justify-content:space-between;gap:24px"><span style="color:#dc2626;font-weight:900">Fail</span><span style="color:${c.tooltipText};font-weight:900;font-family:monospace">${(stat.fail||0).toLocaleString()}</span></div>`;
+                        s += `<div style="border-top:1px solid ${c.tooltipBd};margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;gap:24px"><span style="color:${c.tooltipSub};font-weight:900">Total</span><span style="color:${c.tooltipText};font-weight:900;font-family:monospace">${t.toLocaleString()}</span></div>`;
+                        s += `<div style="display:flex;justify-content:space-between;gap:24px"><span style="color:#2563eb;font-weight:900">Yield</span><span style="color:#2563eb;font-weight:900;font-family:monospace">${yld}%</span></div>`;
                         return s;
                     }
                 },
                 xAxis: {
                     type: 'value',
-                    axisLabel: { color: '#64748b', fontSize: 10, formatter: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v },
+                    axisLabel: { color: c.axisLabel, fontSize: 10, formatter: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v },
                     axisLine: { show: false }, axisTick: { show: false },
-                    splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } }
+                    splitLine: { lineStyle: { color: c.splitLine, type: 'dashed' } }
                 },
                 yAxis: {
                     type: 'category', data: labels,
                     axisLabel: {
-                        color: '#94a3b8', fontSize: 10, fontWeight: 'bold',
+                        color: c.axisLabel, fontSize: 10, fontWeight: 'bold',
                         formatter: v => v.length > 18 ? v.slice(0, 16) + '…' : v,
                         width: 140, overflow: 'truncate'
                     },
-                    axisLine: { lineStyle: { color: '#1e293b' } },
+                    axisLine: { lineStyle: { color: c.splitLine } },
                     axisTick: { show: false }
                 },
                 series: [
                     {
                         name: 'Pass', type: 'bar', data: passData, stack: 'total',
-                        itemStyle: { color: { type:'linear',x:0,y:0,x2:1,y2:0, colorStops:[{offset:0,color:'#15803d'},{offset:1,color:'#4ade80'}] }, borderRadius:[0,0,0,0] },
+                        itemStyle: { color: { type:'linear',x:0,y:0,x2:1,y2:0, colorStops:[{offset:0,color:c.passBot},{offset:1,color:c.passTop}] }, borderRadius:[0,0,0,0] },
                         barMaxWidth: barH,
                         label: { show: true, position: 'inside', fontSize: 9, fontWeight: 900, color: '#fff',
                             formatter: p => p.value > 0 ? p.value.toLocaleString() : '' },
-                        emphasis: { itemStyle: { color: '#86efac' } }
+                        emphasis: { itemStyle: { color: c.passEmph } }
                     },
                     {
                         name: 'Fail', type: 'bar', data: failData, stack: 'total',
-                        itemStyle: { color: { type:'linear',x:0,y:0,x2:1,y2:0, colorStops:[{offset:0,color:'#b91c1c'},{offset:1,color:'#f87171'}] }, borderRadius:[4,4,4,4] },
+                        itemStyle: { color: { type:'linear',x:0,y:0,x2:1,y2:0, colorStops:[{offset:0,color:c.failBot},{offset:1,color:c.failTop}] }, borderRadius:[4,4,4,4] },
                         barMaxWidth: barH,
-                        label: { show: true, position: 'right', fontSize: 10, fontWeight: 900, color: '#f87171',
+                        label: { show: true, position: 'right', fontSize: 10, fontWeight: 900, color: c.failLabel,
                             formatter: p => p.value > 0 ? `✕${p.value.toLocaleString()}` : '' },
-                        emphasis: { itemStyle: { color: '#fca5a5' } }
+                        emphasis: { itemStyle: { color: c.failEmph } }
                     }
                 ]
             });
@@ -1131,34 +1564,35 @@
             setTimeout(() => {
                 if (sovChart) { try { sovChart.dispose(); } catch(e) {} }
                 const el = document.getElementById('sov-chart');
-                sovChart = echarts.init(el, 'dark');
+                sovChart = echarts.init(el, currentTheme);
                 const trend = buildStationTrend([...passRows, ...failRows]);
                 const allVals = [...trend.passData, ...trend.failData];
                 const maxV = Math.max(...allVals, 1);
+                const c = C();
                 sovChart.setOption({
                     backgroundColor: 'transparent',
                     grid: { top: 30, bottom: 30, left: 10, right: 10, containLabel: true },
-                    legend: { top: 4, right: 10, data: ['Pass', 'Fail'], textStyle: { color: '#94a3b8', fontSize: 10, fontWeight: 900 }, icon: 'roundRect' },
+                    legend: { top: 4, right: 10, data: ['Pass', 'Fail'], textStyle: { color: c.legendText, fontSize: 10, fontWeight: 900 }, icon: 'roundRect' },
                     tooltip: {
                         trigger: 'axis', axisPointer: { type: 'shadow' },
-                        backgroundColor: '#1e293b', borderColor: '#334155',
-                        textStyle: { fontSize: 11, fontWeight: 'bold' },
+                        backgroundColor: c.tooltipBg, borderColor: c.tooltipBd,
+                        textStyle: { fontSize: 11, fontWeight: 'bold', color: c.tooltipText },
                         formatter: params => {
-                            let s = `<div style="font-size:10px;font-weight:900;color:#94a3b8;margin-bottom:6px">${params[0].axisValue}</div>`;
+                            let s = `<div style="font-size:10px;font-weight:900;color:${c.tooltipSub};margin-bottom:6px">${params[0].axisValue}</div>`;
                             const pVal = params.find(p => p.seriesName === 'Pass');
                             const fVal = params.find(p => p.seriesName === 'Fail');
                             const tot = (pVal?.value||0) + (fVal?.value||0);
-                            if (pVal) s += `<div style="display:flex;justify-content:space-between;gap:20px"><span style="color:#4ade80;font-weight:900">Pass</span><span style="color:#fff;font-weight:900;font-family:monospace">${pVal.value.toLocaleString()}</span></div>`;
-                            if (fVal) s += `<div style="display:flex;justify-content:space-between;gap:20px"><span style="color:#f87171;font-weight:900">Fail</span><span style="color:#fff;font-weight:900;font-family:monospace">${fVal.value.toLocaleString()}</span></div>`;
-                            s += `<div style="border-top:1px solid #334155;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;gap:20px"><span style="color:#94a3b8;font-weight:900">Yield</span><span style="color:#60a5fa;font-weight:900;font-family:monospace">${(((pVal?.value||0)/(tot||1))*100).toFixed(1)}%</span></div>`;
+                            if (pVal) s += `<div style="display:flex;justify-content:space-between;gap:20px"><span style="color:#16a34a;font-weight:900">Pass</span><span style="color:${c.tooltipText};font-weight:900;font-family:monospace">${pVal.value.toLocaleString()}</span></div>`;
+                            if (fVal) s += `<div style="display:flex;justify-content:space-between;gap:20px"><span style="color:#dc2626;font-weight:900">Fail</span><span style="color:${c.tooltipText};font-weight:900;font-family:monospace">${fVal.value.toLocaleString()}</span></div>`;
+                            s += `<div style="border-top:1px solid ${c.tooltipBd};margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;gap:20px"><span style="color:${c.tooltipSub};font-weight:900">Yield</span><span style="color:#2563eb;font-weight:900;font-family:monospace">${(((pVal?.value||0)/(tot||1))*100).toFixed(1)}%</span></div>`;
                             return s;
                         }
                     },
-                    xAxis: { type: 'category', data: trend.labels, axisLabel: { color: '#64748b', fontSize: 10, rotate: trend.labels.length > 8 ? 30 : 0 }, axisLine: { lineStyle: { color: '#334155' } }, axisTick: { show: false } },
-                    yAxis: { type: 'value', min: 0, max: Math.ceil(maxV * 1.2), axisLabel: { color: '#64748b', fontSize: 10, formatter: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } } },
+                    xAxis: { type: 'category', data: trend.labels, axisLabel: { color: c.axisLabel, fontSize: 10, rotate: trend.labels.length > 8 ? 30 : 0 }, axisLine: { lineStyle: { color: c.axisLine } }, axisTick: { show: false } },
+                    yAxis: { type: 'value', min: 0, max: Math.ceil(maxV * 1.2), axisLabel: { color: c.axisLabel, fontSize: 10, formatter: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { lineStyle: { color: c.splitLine, type: 'dashed' } } },
                     series: [
-                        { name: 'Pass', type: 'bar', data: trend.passData, itemStyle: { color: { type:'linear',x:0,y:0,x2:0,y2:1, colorStops:[{offset:0,color:'#4ade80'},{offset:1,color:'#15803d'}] }, borderRadius:[5,5,0,0] }, barGap:'8%', barCategoryGap:'28%', label: { show: trend.labels.length <= 10, position:'top', fontSize:10, fontWeight:900, color:'#4ade80', formatter: p => p.value > 0 ? p.value.toLocaleString() : '' }, emphasis: { itemStyle: { color:'#86efac' } } },
-                        { name: 'Fail', type: 'bar', data: trend.failData, itemStyle: { color: { type:'linear',x:0,y:0,x2:0,y2:1, colorStops:[{offset:0,color:'#f87171'},{offset:1,color:'#991b1b'}] }, borderRadius:[5,5,0,0] }, barGap:'8%', barCategoryGap:'28%', label: { show: trend.labels.length <= 10, position:'top', fontSize:10, fontWeight:900, color:'#f87171', formatter: p => p.value > 0 ? p.value.toLocaleString() : '' }, emphasis: { itemStyle: { color:'#fca5a5' } } }
+                        { name: 'Pass', type: 'bar', data: trend.passData, itemStyle: { color: { type:'linear',x:0,y:0,x2:0,y2:1, colorStops:[{offset:0,color:c.passTop},{offset:1,color:c.passBot}] }, borderRadius:[5,5,0,0] }, barGap:'8%', barCategoryGap:'28%', label: { show: trend.labels.length <= 10, position:'top', fontSize:10, fontWeight:900, color:c.passLabel, formatter: p => p.value > 0 ? p.value.toLocaleString() : '' }, emphasis: { itemStyle: { color: c.passEmph } } },
+                        { name: 'Fail', type: 'bar', data: trend.failData, itemStyle: { color: { type:'linear',x:0,y:0,x2:0,y2:1, colorStops:[{offset:0,color:c.failTop},{offset:1,color:c.failBot}] }, borderRadius:[5,5,0,0] }, barGap:'8%', barCategoryGap:'28%', label: { show: trend.labels.length <= 10, position:'top', fontSize:10, fontWeight:900, color:c.failLabel, formatter: p => p.value > 0 ? p.value.toLocaleString() : '' }, emphasis: { itemStyle: { color: c.failEmph } } }
                     ]
                 });
             }, 80);
@@ -1273,12 +1707,196 @@
         function showErrorPopover(msg) { /* replaced by openParetoModal */ }
         function hideErrorPopover() { closeParetoModal(); }
 
-        window.addEventListener('resize', () => {
-            pieChart.resize();
-            Object.values(miniChartInstances).forEach(c => { try { c.resize(); } catch(e) {} });
-            if (sovChart) { try { sovChart.resize(); } catch(e) {} }
-            if (carrierChart) { try { carrierChart.resize(); } catch(e) {} }
+        // ── Theme Toggle ──────────────────────────────────────────────
+        function toggleTheme() {
+            currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            const isLight = currentTheme === 'light';
+            document.documentElement.classList.toggle('light', isLight);
+            document.getElementById('theme-btn').innerText = isLight ? '🌙' : '☀️';
+            localStorage.setItem('sl-theme', currentTheme);
+            // Re-init all charts with new theme
+            reinitAllCharts();
+        }
+
+        function reinitAllCharts() {
+            // Pie chart
+            const pieEl = document.getElementById('pie-chart');
+            if (pieEl) {
+                if (pieChart) { try { pieChart.dispose(); } catch(e){} }
+                pieChart = echarts.init(pieEl, currentTheme);
+                updateUI();
+                return; // updateUI will re-render everything
+            }
+        }
+
+        // Restore saved theme
+        (function() {
+            const saved = localStorage.getItem('sl-theme') || 'dark';
+            if (saved === 'light') {
+                currentTheme = 'light';
+                document.documentElement.classList.add('light');
+                document.getElementById('theme-btn').innerText = '☀️';
+            }
+        })();
+
+        // ── Chart Bug Fix: ResizeObserver ─────────────────────────────
+        // Use ResizeObserver so charts always fill their container correctly
+        let _resizeTimer = null;
+        function debouncedResizeAllCharts() {
+            clearTimeout(_resizeTimer);
+            _resizeTimer = setTimeout(() => {
+                try { pieChart.resize(); } catch(e){}
+                Object.values(miniChartInstances).forEach(c => { try { c.resize(); } catch(e){} });
+                if (sovChart) { try { sovChart.resize(); } catch(e){} }
+                if (carrierChart) { try { carrierChart.resize(); } catch(e){} }
+            }, 60);
+        }
+        window.addEventListener('resize', debouncedResizeAllCharts);
+
+        // Watch station-grid container so mini charts resize when cards appear/change
+        const gridObserver = new ResizeObserver(debouncedResizeAllCharts);
+        gridObserver.observe(document.getElementById('station-grid'));
+
+        // Also fix: pie chart container observer
+        const pieObserver = new ResizeObserver(() => {
+            clearTimeout(_resizeTimer);
+            _resizeTimer = setTimeout(() => { try { pieChart.resize(); } catch(e){} }, 80);
         });
+        pieObserver.observe(document.getElementById('pie-chart').parentElement);
+        // ── End Chart Bug Fix ─────────────────────────────────────────
+
+        // ── Real-time Live Mode ───────────────────────────────────────
+        function setLastUpdated() {
+            const badge = document.getElementById('last-update-badge');
+            const t = new Date().toLocaleTimeString('th-TH', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+            badge.innerText = `อัปเดต ${t}`;
+            badge.classList.remove('hidden');
+        }
+
+        function fetchAndLoad() {
+            fetch('/data')
+                .then(r => { if (!r.ok) throw new Error(); return r.text(); })
+                .then(text => {
+                    if (!text.trim()) return;
+                    processText(text);
+                    setLastUpdated();
+                })
+                .catch(() => {});
+        }
+
+        // processText: parse CSV string (same logic as processFile but from raw text)
+        function processText(content) {
+            const lines = content.trim().split(/\r?\n/);
+            if (lines.length < 2) return;
+            const delimiter = lines[0].includes('\t') ? '\t' : ',';
+            rawHeaders = lines[0].split(delimiter).map(h => h.trim().replace(/"/g, ''));
+            const headersUpper = rawHeaders.map(h => h.toUpperCase());
+
+            const lIdx     = headersUpper.findIndex(h => h.includes('LINE') || h.includes('AREA'));
+            const sIdx     = headersUpper.findIndex(h => h.includes('STATION') || h.includes('OPNO') || h.includes('PROCESS'));
+            const rIdx     = headersUpper.findIndex(h => h.includes('STATUS') || h.includes('RESULT') || h.includes('PASS'));
+            const cIdx     = headersUpper.findIndex(h => (h.includes('CARRIER') || h.includes('RFID') || h.includes('TRAY')) && !h.includes('TESTER'));
+            const tIdx     = headersUpper.findIndex(h => h.includes('DATE') || h.includes('TIME') || h.includes('TIMESTAMP'));
+            const seqIdx   = headersUpper.findIndex(h => h.includes('SEQ') || h.includes('STEP'));
+            const titleIdx = headersUpper.findIndex(h => h.includes('TITLE') || h.includes('MSG') || h.includes('ERROR'));
+            const testerIdx= headersUpper.findIndex(h => h.includes('TESTER') || h.includes('PC') || h.includes('MACHINE_ID'));
+            const autoSnIdx= headersUpper.findIndex(h => h.includes('SERIAL') || h === 'SN' || h.includes('_SN') || h.startsWith('SN_'));
+
+            rawData = [];
+            timeData = { dates: new Set(), weeks: new Set(), months: new Set() };
+            carrierFailDetails = {};
+            const linesFound = new Set();
+
+            if (snColIndex < 0 && autoSnIdx >= 0) {
+                snColIndex = autoSnIdx;
+                snColName  = rawHeaders[snColIndex] || 'Serial No';
+            }
+
+            for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split(delimiter).map(c => c.trim().replace(/"/g, ''));
+                if (cols.length < 2) continue;
+
+                const lineName  = lIdx  !== -1 && cols[lIdx]  ? cols[lIdx]  : 'Line 1';
+                const station   = sIdx  !== -1 && cols[sIdx]  ? cols[sIdx]  : 'Station 1';
+                const resValue  = (cols[rIdx] || '').toUpperCase();
+                const result    = resValue.includes('PASS') || resValue === 'OK' || resValue === '1' || resValue === 'TRUE';
+                const carrier   = cIdx  !== -1 && cols[cIdx]  ? cols[cIdx]  : 'Unknown';
+                const timestamp = tIdx  !== -1 ? cols[tIdx]  : '';
+                const testerId  = testerIdx !== -1 && cols[testerIdx] ? cols[testerIdx] : '-';
+                const snVal     = snColIndex >= 0 && cols[snColIndex] ? cols[snColIndex] : '';
+
+                let dateStr = 'Unknown', weekStr = 'Unknown', monthStr = 'Unknown';
+                if (timestamp) {
+                    const d = new Date(timestamp);
+                    if (!isNaN(d.getTime())) {
+                        dateStr  = d.toISOString().split('T')[0];
+                        weekStr  = getWeekNumber(d);
+                        monthStr = dateStr.substring(0, 7);
+                        timeData.dates.add(dateStr);
+                        timeData.weeks.add(weekStr);
+                        timeData.months.add(monthStr);
+                    }
+                }
+
+                const rowObj = {
+                    line: lineName, station, result, carrier,
+                    date: dateStr, week: weekStr, month: monthStr,
+                    seq:   seqIdx   !== -1 ? cols[seqIdx]   : '-',
+                    title: titleIdx !== -1 ? cols[titleIdx] : 'N/A',
+                    time: timestamp, tester: testerId, sn: snVal, _snRaw: cols
+                };
+                rawData.push(rowObj);
+                linesFound.add(lineName);
+                if (!result) {
+                    if (!carrierFailDetails[carrier]) carrierFailDetails[carrier] = [];
+                    carrierFailDetails[carrier].push(rowObj);
+                }
+            }
+
+            // Preserve current filter selection
+            const lineSelect = document.getElementById('line-filter');
+            const prevLine = lineSelect.value;
+            lineSelect.innerHTML = '<option value="ALL">All Lines</option>' +
+                Array.from(linesFound).sort().map(l => `<option value="${l}">${l}</option>`).join('');
+            if (prevLine && lineSelect.querySelector(`option[value="${prevLine}"]`)) lineSelect.value = prevLine;
+
+            document.getElementById('sn-tag-btn').classList.remove('hidden');
+            updateActiveBadge();
+            updateTimeOptions();
+            updateStationOptions();
+            updateUI();
+        }
+
+        // Try to connect to live server via WebSocket
+        (function initLive() {
+            if (typeof io === 'undefined') return; // offline mode — keep drag & drop
+
+            const socket = io({ transports: ['websocket', 'polling'], reconnectionDelay: 2000 });
+
+            socket.on('connect', () => {
+                window._isLiveMode = true;
+                // Show live badge, hide drop zone
+                document.getElementById('live-banner').classList.remove('hidden');
+                document.getElementById('live-banner').classList.add('flex');
+                document.getElementById('drop-zone-wrap').classList.add('hidden');
+                // Get file name
+                fetch('/status').then(r => r.json()).then(s => {
+                    document.getElementById('live-filename').innerText = s.file.split(/[\\/]/).pop();
+                }).catch(() => {});
+                // Initial load
+                fetchAndLoad();
+            });
+
+            socket.on('data_updated', () => {
+                fetchAndLoad();
+            });
+
+            socket.on('disconnect', () => {
+                document.getElementById('live-banner').classList.add('hidden');
+                document.getElementById('drop-zone-wrap').classList.remove('hidden');
+            });
+        })();
+        // ── End Real-time ─────────────────────────────────────────────
 
         updateUI();
     </script>
