@@ -6,12 +6,16 @@
     <title>Station Analytics Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
-    <!-- Socket.IO — โหลดได้เฉพาะเมื่อรันผ่าน server.py -->
+    <!-- Live: Node-RED (/dashboard) หรือ server.py (Socket.IO) -->
     <script>
-        // ลอง load socket.io จาก server ก่อน ถ้าไม่ได้ก็ใช้ drag&drop แทน
         window._isLiveMode = false;
+        window._socketioFailed = false;
+        // เปิดผ่าน Node-RED → /dashboard | เปิดไฟล์ตรง → offline
+        window._sourceMode = (window.location.protocol === 'file:' || window.location.protocol === 'blob:')
+            ? 'offline'
+            : (window.location.pathname.includes('/dashboard') ? 'nodered' : 'flask');
     </script>
-    <script src="/socket.io/socket.io.js" onerror="console.log('Running in offline mode')"></script>
+    <script src="/socket.io/socket.io.js" onerror="window._socketioFailed=true"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
 
@@ -1867,34 +1871,83 @@
             updateUI();
         }
 
-        // Try to connect to live server via WebSocket
-        (function initLive() {
-            if (typeof io === 'undefined') return; // offline mode — keep drag & drop
+        function showLiveBanner() {
+            document.getElementById('live-banner').classList.remove('hidden');
+            document.getElementById('live-banner').classList.add('flex');
+            document.getElementById('drop-zone-wrap').classList.add('hidden');
+        }
 
+        function hideLiveBanner() {
+            document.getElementById('live-banner').classList.add('hidden');
+            document.getElementById('drop-zone-wrap').classList.remove('hidden');
+        }
+
+        function setLiveFilename(name) {
+            document.getElementById('live-filename').innerText = name || 'Live';
+        }
+
+        // Node-RED: โหลด CSV เต็มจาก /api/data (ข้อมูลครบเหมือน drag & drop)
+        function fetchNodeRedData() {
+            fetch('/api/data')
+                .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.text(); })
+                .then(text => {
+                    if (!text || !text.trim()) return;
+                    processText(text);
+                    setLastUpdated();
+                })
+                .catch(() => {
+                    fetch('/api/status').then(r => r.json()).then(s => {
+                        if (s.error) document.getElementById('drop-text').innerText = s.error;
+                    }).catch(() => {});
+                });
+        }
+
+        function connectNodeRedLive() {
+            window._isLiveMode = true;
+            showLiveBanner();
+            setLiveFilename('Live');
+            fetchNodeRedData();
+
+            fetch('/api/status').then(r => r.json()).then(s => {
+                const f = (s.file || '').split(/[\\/]/).pop();
+                if (f) setLiveFilename(f);
+            }).catch(() => {});
+
+            if (window._nrPollTimer) clearInterval(window._nrPollTimer);
+            window._nrPollTimer = setInterval(fetchNodeRedData, 60000);
+        }
+
+        // server.py: Socket.IO + /data
+        function connectFlaskLive() {
             const socket = io({ transports: ['websocket', 'polling'], reconnectionDelay: 2000 });
 
             socket.on('connect', () => {
                 window._isLiveMode = true;
-                // Show live badge, hide drop zone
-                document.getElementById('live-banner').classList.remove('hidden');
-                document.getElementById('live-banner').classList.add('flex');
-                document.getElementById('drop-zone-wrap').classList.add('hidden');
-                // Get file name
+                showLiveBanner();
+                setLiveFilename('server.py');
                 fetch('/status').then(r => r.json()).then(s => {
-                    document.getElementById('live-filename').innerText = s.file.split(/[\\/]/).pop();
+                    setLiveFilename((s.file || '').split(/[\\/]/).pop());
                 }).catch(() => {});
-                // Initial load
                 fetchAndLoad();
             });
 
-            socket.on('data_updated', () => {
-                fetchAndLoad();
-            });
+            socket.on('data_updated', () => fetchAndLoad());
 
             socket.on('disconnect', () => {
-                document.getElementById('live-banner').classList.add('hidden');
-                document.getElementById('drop-zone-wrap').classList.remove('hidden');
+                window._isLiveMode = false;
+                hideLiveBanner();
             });
+        }
+
+        (function initLive() {
+            if (window._sourceMode === 'nodered') {
+                connectNodeRedLive();
+                return;
+            }
+            if (window._sourceMode === 'flask' && typeof io !== 'undefined' && !window._socketioFailed) {
+                connectFlaskLive();
+            }
+            // offline: ใช้ drag & drop (เปิด db.html เป็นไฟล์ หรือไม่มี backend)
         })();
         // ── End Real-time ─────────────────────────────────────────────
 
