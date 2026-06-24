@@ -42,7 +42,7 @@ DB_CONFIG = {
     "host":     "localhost",
     "port":     3306,
     "user":     "root",
-    "password": "your_password",  # ← เปลี่ยนตามจริง
+    "password": "1234",  # ← เปลี่ยนตามจริง
     "database": "myapp_db",
     "charset":  "utf8mb4",
 }
@@ -281,7 +281,7 @@ class LoginWindow(ctk.CTk):
 
         # ── Window setup ────────────────────────────────────
         self.title("App — Login")
-        self.geometry(self._center(420, 540))
+        self.geometry(self._center(500, 650))
         self.resizable(False, False)
         self.configure(fg_color=Theme.BG_MAIN)
         ctk.set_appearance_mode("dark")
